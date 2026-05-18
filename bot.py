@@ -7,9 +7,18 @@ from config import (
     OLLAMA_BASE_URL,
     DEFAULT_MODEL,
     DISCORD_GUILD_ID_INT,
+    MEMORY_DIR,
 )
 from ollama_client import ask_ollama
-from assistant_memory import init_db, remember_memory, search_memories, forget_memory, get_recent_memories
+from assistant_memory import (
+    init_db,
+    remember_memory,
+    search_memories,
+    forget_memory,
+    get_recent_memories,
+    get_memory,
+    export_memories_to_markdown,
+)
 
 
 class SoraSecretary(discord.Client):
@@ -204,13 +213,23 @@ async def chat(interaction: discord.Interaction, text: str) -> None:
     await interaction.response.defer(thinking=True)
 
     is_recent = any(k in text for k in ["最近覚えたことを見せて", "最近の記憶"])
+    is_show = any(k in text for k in ["この記憶を見せて", "を見せて"]) and "最近" not in text
+    is_export = any(k in text for k in ["Markdownにして", "記憶を書き出して", "エクスポートして"])
     is_remember = any(k in text for k in ["覚えて", "記憶して", "メモして", "保存して"])
     is_search = any(k in text for k in ["探して", "検索して", "前に", "覚えてる"])
     is_forget = any(k in text for k in ["消して", "忘れて", "削除して"])
     is_daily = any(k in text for k in ["まとめて", "日報", "今日の作業"])
 
     try:
-        if is_recent:
+        if is_export:
+            await interaction.followup.send("⚠️ 記憶のMarkdownエクスポートを行うには、`/export_memory` コマンドを使用してください。")
+            return
+            
+        elif is_show:
+            await interaction.followup.send("⚠️ 記憶の詳細表示を行うには、`/show_memory memory_id:...` コマンドを使用してください。")
+            return
+
+        elif is_recent:
             results = get_recent_memories(limit=10)
             if not results:
                 await interaction.followup.send("最近の記憶はありません。")
@@ -430,6 +449,70 @@ async def recent_memories_cmd(interaction: discord.Interaction, limit: int = 10)
         for chunk in split_message(msg):
             await interaction.followup.send(chunk)
 
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+
+@client.tree.command(name="show_memory", description="指定した記憶の詳細を表示します")
+@app_commands.describe(memory_id="表示する記憶のID")
+async def show_memory_cmd(interaction: discord.Interaction, memory_id: str) -> None:
+    print(f"/show_memory from user_id={interaction.user.id}: memory_id={memory_id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        mem = get_memory(memory_id)
+        if not mem:
+            await interaction.followup.send("見つかりませんでした。")
+            return
+
+        lines = [
+            f"📄 **記憶詳細** (`{mem['id']}`)",
+            f"**Title**: {mem['title']}",
+            f"**Type**: {mem['memory_type']}",
+            f"**Sensitivity**: {mem['sensitivity']}",
+            f"**Tags**: {mem['tags']}",
+            f"**Created At**: {mem['created_at']}",
+            f"**Updated At**: {mem['updated_at']}",
+            f"",
+            f"**Summary**:\n{mem['summary']}",
+            f"",
+            f"**Body**:\n{mem['body']}"
+        ]
+        
+        msg = "\n".join(lines)
+        for chunk in split_message(msg):
+            await interaction.followup.send(chunk)
+
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+
+@client.tree.command(name="export_memory", description="記憶をMarkdownにエクスポートします")
+@app_commands.describe(limit="出力件数（デフォルト20、最大100）")
+async def export_memory_cmd(interaction: discord.Interaction, limit: int = 20) -> None:
+    print(f"/export_memory from user_id={interaction.user.id}: limit={limit}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    # 制限
+    if limit > 100:
+        limit = 100
+    elif limit < 1:
+        limit = 20
+
+    await interaction.response.defer(thinking=True)
+    try:
+        filepath, count = export_memories_to_markdown(limit=limit, memory_dir=MEMORY_DIR)
+        
+        if count == 0:
+            await interaction.followup.send("エクスポートする記憶がありません。")
+            return
+            
+        await interaction.followup.send(f"✅ {count}件の記憶をMarkdownにエクスポートしました。\n**出力先**: `{filepath}`")
     except Exception as exc:
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
 

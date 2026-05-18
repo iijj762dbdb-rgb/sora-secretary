@@ -12,3 +12,4 @@
 - [x] 自然文入力 `/chat text` コマンドの実装
 - [x] `/daily` および `/recent_memories` コマンドの実装
 - [x] 半自律的な記憶候補提示機能の実装
+- [x] `/show_memory` および `/export_memory` コマンドの実装

@@ -2,7 +2,7 @@
 
 - [x] `/remember` `/search` `/forget` コマンドの実装
 - [x] 自然文入力 `/chat text` コマンドの実装
-- [ ] Markdown エクスポート機能
+- [x] Markdown エクスポート機能 (`/export_memory`, `/show_memory`)
 - [x] `/daily` および `/recent_memories` コマンド
 - [x] 半自律的な記憶候補提示機能
 - [ ] `/prompt` コマンド

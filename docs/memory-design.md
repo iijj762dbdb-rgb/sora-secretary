@@ -11,8 +11,10 @@
 
 ## コマンド
 - `/remember`: 指定した内容を記憶する
+- `/show_memory`: 指定した記憶の詳細を表示する
 - `/search`: 記憶から検索する
 - `/recent_memories`: archived=0 の記憶を新しい順に表示する
+- `/export_memory`: archived=0 の記憶を新しい順にMarkdownへ書き出す
 - `/forget`: 記憶を無効化する（物理削除ではなく `archived=1`）
 - `/chat`: 自然文による入力から、キーワード（「覚えて」「探して」等）ベースで各機能（remember, search, forget候補提示, recent memories, daily, 通常会話）へ振り分けます。
 - `/daily`: 作業メモをOllamaで日報形式に整理し、必要に応じて `daily_report` として保存します。

@@ -160,3 +160,51 @@ def forget_memory(memory_id: str) -> bool:
         return cursor.rowcount > 0
     finally:
         conn.close()
+
+def get_memory(memory_id: str) -> dict | None:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM memories WHERE id = ? AND archived = 0", (memory_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+def export_memories_to_markdown(limit: int, memory_dir: str) -> tuple[str, int]:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM memories WHERE archived = 0 ORDER BY created_at DESC LIMIT ?", (limit,))
+        rows = cursor.fetchall()
+        
+        if not rows:
+            return "", 0
+            
+        export_dir = os.path.join(memory_dir, "exports")
+        os.makedirs(export_dir, exist_ok=True)
+        
+        now_str = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+        filename = f"{now_str}-memory-export.md"
+        filepath = os.path.join(export_dir, filename)
+        
+        count = len(rows)
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(f"# SORA Secretary Memory Export\n\n")
+            f.write(f"- **Export Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"- **Count**: {count}\n\n")
+            f.write("---\n\n")
+            
+            for r in rows:
+                f.write(f"## {r['title']} (`{r['id']}`)\n")
+                f.write(f"- **Type**: {r['memory_type']}\n")
+                f.write(f"- **Tags**: {r['tags']}\n")
+                f.write(f"- **Created At**: {r['created_at']}\n")
+                f.write(f"### Summary\n{r['summary']}\n\n")
+                if r['body']:
+                    f.write(f"### Body\n{r['body']}\n\n")
+                f.write("---\n\n")
+                
+        return filepath, count
+    finally:
+        conn.close()
