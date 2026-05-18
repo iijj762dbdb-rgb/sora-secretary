@@ -9,7 +9,7 @@ from config import (
     DISCORD_GUILD_ID_INT,
 )
 from ollama_client import ask_ollama
-from assistant_memory import init_db, remember_memory, search_memories, forget_memory
+from assistant_memory import init_db, remember_memory, search_memories, forget_memory, get_recent_memories
 
 
 class SoraSecretary(discord.Client):
@@ -190,13 +190,49 @@ async def chat(interaction: discord.Interaction, text: str) -> None:
 
     await interaction.response.defer(thinking=True)
 
+    is_recent = any(k in text for k in ["最近覚えたことを見せて", "最近の記憶"])
     is_remember = any(k in text for k in ["覚えて", "記憶して", "メモして", "保存して"])
     is_search = any(k in text for k in ["探して", "検索して", "前に", "覚えてる"])
     is_forget = any(k in text for k in ["消して", "忘れて", "削除して"])
     is_daily = any(k in text for k in ["まとめて", "日報", "今日の作業"])
 
     try:
-        if is_remember:
+        if is_recent:
+            results = get_recent_memories(limit=10)
+            if not results:
+                await interaction.followup.send("最近の記憶はありません。")
+                return
+
+            lines = [f"🕒 **最近の記憶** (上位{len(results)}件):"]
+            for r in results:
+                lines.append(f"- **{r['title']}** (`{r['id']}`) [{r['created_at']}]\n  {r['summary']}...")
+            
+            msg = "\n".join(lines)
+            for chunk in split_message(msg):
+                await interaction.followup.send(chunk)
+
+        elif is_daily:
+            prompt = f"以下の作業メモを元に、日報形式（今日やったこと、決めたこと、次にやること、注意点など）に整理してください。\n\n作業メモ:\n{text}"
+            print("Calling Ollama for daily report...", flush=True)
+            answer = await ask_ollama(
+                base_url=OLLAMA_BASE_URL,
+                model=DEFAULT_MODEL,
+                prompt=prompt,
+            )
+            title = "日報: " + text[:20].replace("\n", " ") + ("..." if len(text) > 20 else "")
+            mem_id = remember_memory(
+                title=title, 
+                body=answer, 
+                tags="daily_report", 
+                memory_type="daily_report", 
+                sensitivity="normal"
+            )
+            
+            out_msg = f"✅ 日報を作成し、記憶しました (ID: `{mem_id}`).\n\n{answer}"
+            for chunk in split_message(out_msg):
+                await interaction.followup.send(chunk)
+
+        elif is_remember:
             title = text[:30].replace("\n", " ") + ("..." if len(text) > 30 else "")
             mem_id = remember_memory(
                 title=title, 
@@ -236,7 +272,7 @@ async def chat(interaction: discord.Interaction, text: str) -> None:
             for chunk in split_message(msg):
                 await interaction.followup.send(chunk)
 
-        else: # is_daily or normal_chat
+        else: # normal_chat
             print("Calling Ollama (chat)...", flush=True)
             answer = await ask_ollama(
                 base_url=OLLAMA_BASE_URL,
@@ -246,6 +282,71 @@ async def chat(interaction: discord.Interaction, text: str) -> None:
             print("Got answer from Ollama.", flush=True)
             for chunk in split_message(answer):
                 await interaction.followup.send(chunk)
+
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+
+@client.tree.command(name="daily", description="作業メモを日報形式に整理して保存します")
+@app_commands.describe(text="本日の作業内容やメモ")
+async def daily_cmd(interaction: discord.Interaction, text: str) -> None:
+    print(f"/daily from user_id={interaction.user.id}: {text[:50]}...", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        prompt = f"以下の作業メモを元に、日報形式（今日やったこと、決めたこと、次にやること、注意点など）に整理してください。\n\n作業メモ:\n{text}"
+        print("Calling Ollama for /daily...", flush=True)
+        answer = await ask_ollama(
+            base_url=OLLAMA_BASE_URL,
+            model=DEFAULT_MODEL,
+            prompt=prompt,
+        )
+        title = "日報: " + text[:20].replace("\n", " ") + ("..." if len(text) > 20 else "")
+        mem_id = remember_memory(
+            title=title, 
+            body=answer, 
+            tags="daily_report", 
+            memory_type="daily_report", 
+            sensitivity="normal"
+        )
+        out_msg = f"✅ 日報を作成し、記憶しました (ID: `{mem_id}`).\n\n{answer}"
+        for chunk in split_message(out_msg):
+            await interaction.followup.send(chunk)
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+
+@client.tree.command(name="recent_memories", description="最近の記憶を表示します")
+@app_commands.describe(limit="表示件数（デフォルト10）")
+async def recent_memories_cmd(interaction: discord.Interaction, limit: int = 10) -> None:
+    print(f"/recent_memories from user_id={interaction.user.id}: limit={limit}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    # 制限
+    if limit > 20:
+        limit = 20
+    elif limit < 1:
+        limit = 10
+
+    await interaction.response.defer(thinking=True)
+    try:
+        results = get_recent_memories(limit=limit)
+        if not results:
+            await interaction.followup.send("最近の記憶はありません。")
+            return
+
+        lines = [f"🕒 **最近の記憶** (上位{len(results)}件):"]
+        for r in results:
+            lines.append(f"- **{r['title']}** (`{r['id']}`) [{r['created_at']}]\n  Tags: {r['tags']}\n  {r['summary']}...")
+        
+        msg = "\n".join(lines)
+        for chunk in split_message(msg):
+            await interaction.followup.send(chunk)
 
     except Exception as exc:
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")

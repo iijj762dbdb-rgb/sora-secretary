@@ -134,6 +134,23 @@ def search_memories(query: str, limit: int = 5) -> list[dict]:
     finally:
         conn.close()
 
+def get_recent_memories(limit: int = 10) -> list[dict]:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        sql = '''
+        SELECT id, title, summary, tags, created_at
+        FROM memories
+        WHERE archived = 0
+        ORDER BY created_at DESC
+        LIMIT ?
+        '''
+        cursor.execute(sql, (limit,))
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
 def forget_memory(memory_id: str) -> bool:
     conn = _get_conn()
     try:

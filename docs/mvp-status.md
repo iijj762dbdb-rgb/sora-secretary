@@ -10,3 +10,4 @@
 - [x] `assistant_memory.db` の構築
 - [x] `/remember`, `/search`, `/forget` コマンドの実装
 - [x] 自然文入力 `/chat text` コマンドの実装
+- [x] `/daily` および `/recent_memories` コマンドの実装
