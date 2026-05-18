@@ -4,6 +4,7 @@
 - [x] 自然文入力 `/chat text` コマンドの実装
 - [ ] Markdown エクスポート機能
 - [x] `/daily` および `/recent_memories` コマンド
+- [x] 半自律的な記憶候補提示機能
 - [ ] `/prompt` コマンド
 - [ ] model routing (router agent)
 - [ ] status 確認系の read-only 実装

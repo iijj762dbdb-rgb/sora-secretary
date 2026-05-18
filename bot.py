@@ -64,6 +64,19 @@ def split_message(text: str, limit: int = 1900) -> list[str]:
     return chunks
 
 
+def is_sensitive(text: str) -> bool:
+    lower_text = text.lower()
+    sensitive_keywords = ["password", "token", ".env", "secret", "private key", "パスワード", "トークン", "秘密鍵", "api_key", "apikey"]
+    return any(k in lower_text for k in sensitive_keywords)
+
+
+def detect_memory_candidate(text: str) -> bool:
+    if is_sensitive(text):
+        return False
+    candidate_keywords = ["方針", "決定", "次回", "今後", "覚えて", "メモ", "不採用", "禁止", "注意", "完了", "実装済み"]
+    return any(k in text for k in candidate_keywords)
+
+
 @client.tree.command(name="ask", description="SORA上のローカルLLMに質問します")
 @app_commands.describe(question="質問内容")
 async def ask(interaction: discord.Interaction, question: str) -> None:
@@ -229,7 +242,30 @@ async def chat(interaction: discord.Interaction, text: str) -> None:
             )
             
             out_msg = f"✅ 日報を作成し、記憶しました (ID: `{mem_id}`).\n\n{answer}"
-            for chunk in split_message(out_msg):
+            
+            combined = text + "\n" + answer
+            candidate_msg = ""
+            if detect_memory_candidate(combined):
+                title_suggestion = "決定事項: " + text[:20].replace('\n', ' ') + ("..." if len(text) > 20 else "")
+                body_suggestion = text.replace('\n', ' ').replace('`', '').replace('"', '\\"')
+                if len(body_suggestion) > 100:
+                    body_suggestion = body_suggestion[:100] + "..."
+                
+                candidate_msg = (
+                    "\n\n💡 **個別記憶（決定事項など）の候補**\n"
+                    "この日報には重要な決定や方針が含まれている可能性があります。\n"
+                    "日報全体とは別に個別でプロジェクト記憶として保存したい場合は、以下を実行してください：\n"
+                    f"```\n/remember title:{title_suggestion} body:{body_suggestion} tags:decision,project_note memory_type:project_note\n```"
+                )
+                
+            chunks = split_message(out_msg)
+            if candidate_msg:
+                if len(chunks[-1]) + len(candidate_msg) <= 1900:
+                    chunks[-1] += candidate_msg
+                else:
+                    chunks.append(candidate_msg)
+                    
+            for chunk in chunks:
                 await interaction.followup.send(chunk)
 
         elif is_remember:
@@ -280,7 +316,30 @@ async def chat(interaction: discord.Interaction, text: str) -> None:
                 prompt=text,
             )
             print("Got answer from Ollama.", flush=True)
-            for chunk in split_message(answer):
+            
+            combined = text + "\n" + answer
+            candidate_msg = ""
+            if detect_memory_candidate(combined):
+                title_suggestion = text[:20].replace('\n', ' ') + ("..." if len(text) > 20 else "")
+                body_suggestion = text.replace('\n', ' ').replace('`', '').replace('"', '\\"')
+                if len(body_suggestion) > 100:
+                    body_suggestion = body_suggestion[:100] + "..."
+                
+                candidate_msg = (
+                    "\n\n💡 **長期記憶の候補を検出しました**\n"
+                    "この会話には方針や決定などの重要な情報が含まれている可能性があります。\n"
+                    "記憶に保存したい場合は、以下のコマンドをコピーして実行してください：\n"
+                    f"```\n/remember title:{title_suggestion} body:{body_suggestion} tags:方針,決定\n```"
+                )
+            
+            chunks = split_message(answer)
+            if candidate_msg:
+                if len(chunks[-1]) + len(candidate_msg) <= 1900:
+                    chunks[-1] += candidate_msg
+                else:
+                    chunks.append(candidate_msg)
+            
+            for chunk in chunks:
                 await interaction.followup.send(chunk)
 
     except Exception as exc:
@@ -313,7 +372,30 @@ async def daily_cmd(interaction: discord.Interaction, text: str) -> None:
             sensitivity="normal"
         )
         out_msg = f"✅ 日報を作成し、記憶しました (ID: `{mem_id}`).\n\n{answer}"
-        for chunk in split_message(out_msg):
+        
+        combined = text + "\n" + answer
+        candidate_msg = ""
+        if detect_memory_candidate(combined):
+            title_suggestion = "決定事項: " + text[:20].replace('\n', ' ') + ("..." if len(text) > 20 else "")
+            body_suggestion = text.replace('\n', ' ').replace('`', '').replace('"', '\\"')
+            if len(body_suggestion) > 100:
+                body_suggestion = body_suggestion[:100] + "..."
+            
+            candidate_msg = (
+                "\n\n💡 **個別記憶（決定事項など）の候補**\n"
+                "この日報には重要な決定や方針が含まれている可能性があります。\n"
+                "日報全体とは別に個別でプロジェクト記憶として保存したい場合は、以下を実行してください：\n"
+                f"```\n/remember title:{title_suggestion} body:{body_suggestion} tags:decision,project_note memory_type:project_note\n```"
+            )
+
+        chunks = split_message(out_msg)
+        if candidate_msg:
+            if len(chunks[-1]) + len(candidate_msg) <= 1900:
+                chunks[-1] += candidate_msg
+            else:
+                chunks.append(candidate_msg)
+                
+        for chunk in chunks:
             await interaction.followup.send(chunk)
     except Exception as exc:
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
