@@ -6,6 +6,8 @@ load_dotenv()
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gemma3:4b")
+ASSISTANT_MEMORY_DB = os.getenv("ASSISTANT_MEMORY_DB", "./data/assistant_memory.db")
+MEMORY_DIR = os.getenv("MEMORY_DIR", "./memory")
 
 _raw_allowed_ids = os.getenv("ALLOWED_DISCORD_USER_IDS", "")
 ALLOWED_DISCORD_USER_IDS = set()

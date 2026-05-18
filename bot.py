@@ -9,6 +9,7 @@ from config import (
     DISCORD_GUILD_ID_INT,
 )
 from ollama_client import ask_ollama
+from assistant_memory import init_db, remember_memory, search_memories, forget_memory
 
 
 class SoraSecretary(discord.Client):
@@ -28,6 +29,8 @@ class SoraSecretary(discord.Client):
             print("Slash commands synced globally.", flush=True)
 
     async def on_ready(self) -> None:
+        init_db()
+        print("assistant_memory database initialized.", flush=True)
         print(f"Logged in as {self.user}.")
 
 
@@ -87,6 +90,94 @@ async def ask(interaction: discord.Interaction, question: str) -> None:
     print("Got answer from Ollama.", flush=True)
     for chunk in split_message(answer):
         await interaction.followup.send(chunk)
+
+
+@client.tree.command(name="remember", description="指定された内容を記憶します")
+@app_commands.describe(
+    title="記憶のタイトル", 
+    body="記憶する本文", 
+    tags="カンマ区切りのタグ (任意)", 
+    memory_type="記憶の種別 (任意)", 
+    sensitivity="秘匿性 (任意)"
+)
+async def remember(
+    interaction: discord.Interaction, 
+    title: str, 
+    body: str, 
+    tags: str = "", 
+    memory_type: str = "conversation_note", 
+    sensitivity: str = "normal"
+) -> None:
+    print(f"/remember from user_id={interaction.user.id}: title={title}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        mem_id = remember_memory(
+            title=title, 
+            body=body, 
+            tags=tags, 
+            memory_type=memory_type, 
+            sensitivity=sensitivity
+        )
+        msg = (
+            f"✅ 記憶しました。\n"
+            f"**ID**: `{mem_id}`\n"
+            f"**Title**: {title}\n"
+            f"**Tags**: {tags}\n"
+            f"**Sensitivity**: {sensitivity}"
+        )
+        await interaction.followup.send(msg)
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+
+@client.tree.command(name="search", description="記憶を検索します")
+@app_commands.describe(query="検索キーワード")
+async def search(interaction: discord.Interaction, query: str) -> None:
+    print(f"/search from user_id={interaction.user.id}: query={query}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        results = search_memories(query)
+        if not results:
+            await interaction.followup.send("見つかりませんでした。")
+            return
+
+        lines = [f"🔍 **検索結果** (上位{len(results)}件):"]
+        for r in results:
+            lines.append(f"- **{r['title']}** (`{r['id']}`) [{r['created_at']}]\n  Tags: {r['tags']}\n  {r['summary']}...")
+        
+        msg = "\n".join(lines)
+        for chunk in split_message(msg):
+            await interaction.followup.send(chunk)
+
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+
+@client.tree.command(name="forget", description="記憶を無効化します")
+@app_commands.describe(memory_id="無効化する記憶のID")
+async def forget(interaction: discord.Interaction, memory_id: str) -> None:
+    print(f"/forget from user_id={interaction.user.id}: memory_id={memory_id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        success = forget_memory(memory_id)
+        if success:
+            await interaction.followup.send(f"✅ 記憶 (`{memory_id}`) を無効化しました。")
+        else:
+            await interaction.followup.send(f"⚠️ 指定された記憶 (`{memory_id}`) は見つかりませんでした。")
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
 
 
 client.run(DISCORD_BOT_TOKEN)
