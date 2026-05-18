@@ -12,6 +12,7 @@
 - `/remember`: 指定した内容を記憶する
 - `/search`: 記憶から検索する
 - `/forget`: 記憶を無効化する（物理削除ではなく `archived=1`）
+- `/chat`: 自然文による入力から、キーワード（「覚えて」「探して」等）ベースで各機能（remember, search, forget候補提示, 通常会話）へ振り分けます。
 
 ## データモデルの概念
 - `memory_type`: 記憶の分類 (例: `conversation_note`)

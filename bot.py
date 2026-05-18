@@ -180,4 +180,75 @@ async def forget(interaction: discord.Interaction, memory_id: str) -> None:
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
 
 
+@client.tree.command(name="chat", description="自然文で指示を出します（記憶・検索・対話など）")
+@app_commands.describe(text="自然文での指示や質問")
+async def chat(interaction: discord.Interaction, text: str) -> None:
+    print(f"/chat from user_id={interaction.user.id}: {text}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+
+    is_remember = any(k in text for k in ["覚えて", "記憶して", "メモして", "保存して"])
+    is_search = any(k in text for k in ["探して", "検索して", "前に", "覚えてる"])
+    is_forget = any(k in text for k in ["消して", "忘れて", "削除して"])
+    is_daily = any(k in text for k in ["まとめて", "日報", "今日の作業"])
+
+    try:
+        if is_remember:
+            title = text[:30].replace("\n", " ") + ("..." if len(text) > 30 else "")
+            mem_id = remember_memory(
+                title=title, 
+                body=text, 
+                tags="", 
+                memory_type="conversation_note", 
+                sensitivity="normal"
+            )
+            msg = f"✅ 以下の内容を記憶しました。\n**ID**: `{mem_id}`\n**Title**: {title}"
+            await interaction.followup.send(msg)
+
+        elif is_search:
+            results = search_memories(text)
+            if not results:
+                await interaction.followup.send("関連する記憶は見つかりませんでした。")
+                return
+
+            lines = [f"🔍 **検索結果** (上位{len(results)}件):"]
+            for r in results:
+                lines.append(f"- **{r['title']}** (`{r['id']}`) [{r['created_at']}]\n  {r['summary']}...")
+            
+            msg = "\n".join(lines)
+            for chunk in split_message(msg):
+                await interaction.followup.send(chunk)
+
+        elif is_forget:
+            results = search_memories(text)
+            if not results:
+                await interaction.followup.send("削除・無効化の候補となる記憶は見つかりませんでした。")
+                return
+
+            lines = ["⚠️ 直接の削除や無効化は行いません。無効化するには以下のIDを指定して `/forget memory_id:...` を実行してください。\n", "🔍 **候補** (上位5件):"]
+            for r in results:
+                lines.append(f"- **{r['title']}** (`{r['id']}`)")
+            
+            msg = "\n".join(lines)
+            for chunk in split_message(msg):
+                await interaction.followup.send(chunk)
+
+        else: # is_daily or normal_chat
+            print("Calling Ollama (chat)...", flush=True)
+            answer = await ask_ollama(
+                base_url=OLLAMA_BASE_URL,
+                model=DEFAULT_MODEL,
+                prompt=text,
+            )
+            print("Got answer from Ollama.", flush=True)
+            for chunk in split_message(answer):
+                await interaction.followup.send(chunk)
+
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+
 client.run(DISCORD_BOT_TOKEN)

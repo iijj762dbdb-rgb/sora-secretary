@@ -1,6 +1,7 @@
 # Remaining Tasks
 
 - [x] `/remember` `/search` `/forget` コマンドの実装
+- [x] 自然文入力 `/chat text` コマンドの実装
 - [ ] Markdown エクスポート機能
 - [ ] `/daily` コマンド
 - [ ] `/prompt` コマンド
