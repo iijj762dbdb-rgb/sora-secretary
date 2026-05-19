@@ -16,7 +16,7 @@
 - `/recent_memories`: archived=0 の記憶を新しい順に表示する
 - `/export_memory`: archived=0 の記憶を新しい順にMarkdownへ書き出す
 - `/forget`: 記憶を無効化する（物理削除ではなく `archived=1`）
-- `/chat`: 自然文による入力から、キーワード（「覚えて」「探して」等）ベースで各機能（remember, search, forget候補提示, recent memories, daily, 通常会話）へ振り分けます。
+- `/chat`: 自然文による入力から、キーワードやIDベースで各機能（remember, search, forget候補提示, daily, 通常会話）へ振り分けます。また、安全な読み取り専用操作（recent memories, show_memory, export_memory）については、自然文から直接相当処理を実行して、ユーザーに直接結果を応答します。
 - `/daily`: 作業メモをOllamaで日報形式に整理し、必要に応じて `daily_report` として保存します。
 
 ## データモデルの概念

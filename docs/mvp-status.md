@@ -5,6 +5,7 @@
 - [x] Guild限定syncによるスラッシュコマンド表示 (`/ask`)
 - [x] SORA上の Ollama (`gemma3:4b`) 呼び出しと返答取得の疎通確認
 - [x] 基本的なドキュメント (docs正本) の整備
+- [x] `/chat` 自然文入力からの read-only 操作（recent/show/export）の直接実行対応と応答の会話感向上
 
 ## 次のステップ
 - [x] `assistant_memory.db` の構築
