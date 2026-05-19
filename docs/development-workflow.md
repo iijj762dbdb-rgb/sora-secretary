@@ -1,5 +1,8 @@
 # Development Workflow
 
+## AIアシスタント向け入口ドキュメント
+AIエージェントやCodexなどの開発アシスタントに実装・改修を依頼する際は、初めに必ず **[docs/ai-codex-brief.md](file:///home/okota/code/sora-secretary/docs/ai-codex-brief.md)** を読み込ませて、安全ポリシーやディレクトリ構造などの基本仕様をインプットしてください。
+
 ## docs正本と mdq 確認ベース
 このプロジェクトでは、コードを書き始める前に「docs（ドキュメント）を正本として扱い、内容を mdq などのツールで確認する」運用を徹底します。
 
