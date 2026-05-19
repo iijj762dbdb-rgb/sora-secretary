@@ -34,11 +34,17 @@ class SoraSecretary(discord.Client):
         intents = discord.Intents.default()
         intents.guilds = True
         intents.messages = True
+        if hasattr(intents, "guild_messages"):
+            intents.guild_messages = True
+        if hasattr(intents, "dm_messages"):
+            intents.dm_messages = True
         if ENABLE_MESSAGE_CONTENT_INTENT:
             intents.message_content = True
         print(f"message_content_debug: ENABLE_MESSAGE_CONTENT_INTENT={ENABLE_MESSAGE_CONTENT_INTENT}", flush=True)
         print(f"message_content_debug: intents.guilds={intents.guilds}", flush=True)
         print(f"message_content_debug: intents.messages={intents.messages}", flush=True)
+        print(f"message_content_debug: intents.guild_messages={getattr(intents, 'guild_messages', None)}", flush=True)
+        print(f"message_content_debug: intents.dm_messages={getattr(intents, 'dm_messages', None)}", flush=True)
         print(f"message_content_debug: intents.message_content={intents.message_content}", flush=True)
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
