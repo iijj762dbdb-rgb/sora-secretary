@@ -34,6 +34,8 @@ class SoraSecretary(discord.Client):
         intents = discord.Intents.default()
         if ENABLE_MESSAGE_CONTENT_INTENT:
             intents.message_content = True
+        print(f"message_content_debug: ENABLE_MESSAGE_CONTENT_INTENT={ENABLE_MESSAGE_CONTENT_INTENT}", flush=True)
+        print(f"message_content_debug: intents.message_content={intents.message_content}", flush=True)
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
 
@@ -53,20 +55,30 @@ class SoraSecretary(discord.Client):
         print(f"Logged in as {self.user}.")
 
     async def on_message(self, message: discord.Message) -> None:
+        print(f"message_content_debug: on_message called user_id={message.author.id} bot={message.author.bot} channel_id={message.channel.id}", flush=True)
         if not ENABLE_MESSAGE_CONTENT_INTENT:
+            print("message_content_debug: ignored because ENABLE_MESSAGE_CONTENT_INTENT is False", flush=True)
             return
         if message.author == self.user:
             return
         if message.author.bot:
+            print("message_content_debug: ignored because author is a bot", flush=True)
             return
         if not is_allowed(message.author.id):
+            print(f"message_content_debug: ignored because user_id={message.author.id} is not allowed", flush=True)
             return
         if MESSAGE_CONTENT_ALLOWED_CHANNEL_IDS and message.channel.id not in MESSAGE_CONTENT_ALLOWED_CHANNEL_IDS:
+            print(f"message_content_debug: ignored because channel_id={message.channel.id} is not in allowed list", flush=True)
             return
 
         content = message.content.strip()
         has_prefix = False
+        has_mention = False
         trigger_len = 0
+
+        # Log content snippet safely (up to 30 chars)
+        safe_snippet = content[:30].replace("\n", " ") + ("..." if len(content) > 30 else "")
+        print(f"message_content_debug: content_snippet={safe_snippet!r} MESSAGE_CONTENT_PREFIX={MESSAGE_CONTENT_PREFIX!r}", flush=True)
 
         if content.startswith(MESSAGE_CONTENT_PREFIX):
             has_prefix = True
@@ -75,22 +87,27 @@ class SoraSecretary(discord.Client):
             mentions_to_check = [f"<@!{self.user.id}>", f"<@{self.user.id}>"]
             for mention in mentions_to_check:
                 if content.startswith(mention):
-                    has_prefix = True
+                    has_mention = True
                     trigger_len = len(mention)
                     break
 
-        if not has_prefix:
+        print(f"message_content_debug: has_prefix={has_prefix} has_mention={has_mention}", flush=True)
+
+        if not has_prefix and not has_mention:
+            print("message_content_debug: ignored because no prefix or mention matched", flush=True)
             return
 
         text = content[trigger_len:].strip()
         if not text:
+            print("message_content_debug: ignored because cleaned text is empty", flush=True)
             return
 
         if len(text) > 4000:
             await message.channel.send("⚠️ 送信されたテキストが長すぎます（最大4000文字）。")
             return
 
-        print(f"on_message chat from user_id={message.author.id} in channel_id={message.channel.id}: {text}", flush=True)
+        safe_cleaned = text[:30].replace("\n", " ") + ("..." if len(text) > 30 else "")
+        print(f"message_content_debug: run_chat_flow reached, cleaned_text={safe_cleaned!r}", flush=True)
 
         async with message.channel.typing():
             try:
