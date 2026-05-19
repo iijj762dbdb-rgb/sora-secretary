@@ -208,3 +208,34 @@ def export_memories_to_markdown(limit: int, memory_dir: str) -> tuple[str, int]:
         return filepath, count
     finally:
         conn.close()
+def get_memory_stats() -> dict:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+
+        # total count
+        cursor.execute("SELECT COUNT(*) FROM memories")
+        total_count = cursor.fetchone()[0]
+
+        # active count
+        cursor.execute("SELECT COUNT(*) FROM memories WHERE archived = 0")
+        active_count = cursor.fetchone()[0]
+
+        # archived count
+        cursor.execute("SELECT COUNT(*) FROM memories WHERE archived = 1")
+        archived_count = cursor.fetchone()[0]
+
+        # latest memory
+        cursor.execute("SELECT * FROM memories ORDER BY created_at DESC LIMIT 1")
+        row = cursor.fetchone()
+        latest_memory = dict(row) if row else None
+
+        return {
+            "total_count": total_count,
+            "active_count": active_count,
+            "archived_count": archived_count,
+            "latest_memory": latest_memory
+        }
+    finally:
+        conn.close()
+

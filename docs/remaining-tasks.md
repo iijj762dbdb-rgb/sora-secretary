@@ -7,7 +7,7 @@
 - [x] 半自律的な記憶候補提示機能
 - [ ] `/prompt` コマンド
 - [ ] model routing (router agent)
-- [ ] status 確認系の read-only 実装
+- [x] status 確認系の read-only 実装（/status コマンド・稼働ステータス一元取得）
 - [ ] Document Inbox との read-only 連携
 - [ ] マルチエージェント化
 - [x] systemd user service 化による常駐化（自動pull再起動・運用ドキュメント化完了）

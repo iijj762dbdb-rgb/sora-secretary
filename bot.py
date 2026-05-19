@@ -20,6 +20,7 @@ from assistant_memory import (
     get_memory,
     export_memories_to_markdown,
 )
+from status_info import build_status_report
 
 
 class SoraSecretary(discord.Client):
@@ -581,7 +582,25 @@ async def export_memory_cmd(interaction: discord.Interaction, limit: int = 20) -
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
 
 
+@client.tree.command(name="status", description="システムおよびBotの稼働ステータスを表示します")
+async def status_cmd(interaction: discord.Interaction) -> None:
+    print(f"/status from user_id={interaction.user.id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        report = await build_status_report()
+        chunks = split_message(report)
+        for chunk in chunks:
+            await interaction.followup.send(chunk)
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+
 # Message Context Menu: 記憶する
+
 @client.tree.context_menu(name="記憶する")
 async def context_remember(interaction: discord.Interaction, message: discord.Message) -> None:
     print(f"Context menu [記憶する] from user_id={interaction.user.id}", flush=True)
