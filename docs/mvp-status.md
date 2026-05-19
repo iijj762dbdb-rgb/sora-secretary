@@ -11,7 +11,7 @@
 - [x] systemd / 自動pull再起動の運用ドキュメント化 (`docs/operations-systemd.md`)
 - [x] `/status` システム監視コマンド（read-only）の実装
 - [x] `/memory_lint` データベース品質点検コマンドの実装
-
+- [x] 用途別モデル設定の最小反映（`CHAT_MODEL` / `SUMMARY_MODEL` / `CODE_MODEL`）
 
 ## 次のステップ
 - [x] `assistant_memory.db` の構築
@@ -20,3 +20,5 @@
 - [x] `/daily` および `/recent_memories` コマンドの実装
 - [x] 半自律的な記憶候補提示機能の実装
 - [x] `/show_memory` および `/export_memory` コマンドの実装
+- [ ] SORA実機で `/status` の用途別モデル表示、`/ask`、`/chat`、`/daily`、Context Menu「日報にする」「要約する」を確認する
+- [ ] 将来の `/code` やコード相談入口で `CODE_MODEL` を実利用するか検討する
