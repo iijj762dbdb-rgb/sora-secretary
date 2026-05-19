@@ -26,6 +26,16 @@
 
 ※ DB更新や削除を伴う `forget` / `delete` 系操作については、安全のため自然文からは直接実行せず、候補提示と `/forget` コマンド案内のみを行います。
 
+## Message Context Menu (メッセージコンテキストメニュー)
+ユーザーが特定のメッセージを右クリック（または長押し）して呼び出せるアプリコマンドです。`Message Content Intent` は使用せず、ユーザーが明示的に選択したメッセージのみを安全に取得して動作します：
+1. **「記憶する」**: 選択したメッセージ本文を `/remember` 相当の挙動で `assistant_memory.db` に明示保存します。
+   - `title`: メッセージ本文の先頭30文字程度
+   - `memory_type`: `conversation_note`
+   - `sensitivity`: `normal`
+   - 保存完了後、新しく発行された `memory_id` とタイトルを ephemeral 応答します。
+2. **「日報にする」**: 選択したメッセージ本文を Ollama にて日報形式に自動整理し、`daily_report` として `assistant_memory.db` に保存します。
+3. **「要約する」**: 選択したメッセージ本文を Ollama にて短縮要約し、結果を ephemeral 応答します（データベースへの保存は行いません）。
+
 ## 将来候補
 - `/prompt`: 他LLM向けプロンプトの作成
 - `/status`: システムやInboxのステータス確認

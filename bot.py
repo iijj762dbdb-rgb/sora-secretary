@@ -581,4 +581,133 @@ async def export_memory_cmd(interaction: discord.Interaction, limit: int = 20) -
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
 
 
+# Message Context Menu: 記憶する
+@client.tree.context_menu(name="記憶する")
+async def context_remember(interaction: discord.Interaction, message: discord.Message) -> None:
+    print(f"Context menu [記憶する] from user_id={interaction.user.id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    try:
+        content = message.content
+        if not content.strip():
+            await interaction.followup.send("⚠️ メッセージ本文が空のため、記憶できません。", ephemeral=True)
+            return
+
+        if is_sensitive(content):
+            await interaction.followup.send(
+                "⚠️ 個人情報や機密性の高い単語（パスワード、トークン、秘密鍵など）が含まれている可能性があるため、記憶できません。", 
+                ephemeral=True
+            )
+            return
+
+        title = content[:30].replace("\n", " ") + ("..." if len(content) > 30 else "")
+        mem_id = remember_memory(
+            title=title,
+            body=content,
+            tags="",
+            memory_type="conversation_note",
+            sensitivity="normal"
+        )
+        msg = (
+            f"✅ 選択したメッセージを記憶しました。\n"
+            f"**ID**: `{mem_id}`\n"
+            f"**Title**: {title}"
+        )
+        await interaction.followup.send(msg, ephemeral=True)
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`", ephemeral=True)
+
+
+# Message Context Menu: 日報にする
+@client.tree.context_menu(name="日報にする")
+async def context_daily(interaction: discord.Interaction, message: discord.Message) -> None:
+    print(f"Context menu [日報にする] from user_id={interaction.user.id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    try:
+        content = message.content
+        if not content.strip():
+            await interaction.followup.send("⚠️ メッセージ本文が空のため、日報化できません。", ephemeral=True)
+            return
+
+        prompt = f"以下の作業メモを元に、日報形式（今日やったこと、決めたこと、次にやること、注意点など）に整理してください。\n\n作業メモ:\n{content}"
+        print("Calling Ollama for context menu daily report...", flush=True)
+        answer = await ask_ollama(
+            base_url=OLLAMA_BASE_URL,
+            model=DEFAULT_MODEL,
+            prompt=prompt,
+        )
+        title = "日報: " + content[:20].replace("\n", " ") + ("..." if len(content) > 20 else "")
+        mem_id = remember_memory(
+            title=title,
+            body=answer,
+            tags="daily_report",
+            memory_type="daily_report",
+            sensitivity="normal"
+        )
+        out_msg = f"✅ 日報を作成し、記憶しました (ID: `{mem_id}`).\n\n{answer}"
+
+        combined = content + "\n" + answer
+        candidate_msg = ""
+        if detect_memory_candidate(combined):
+            title_suggestion = "決定事項: " + content[:20].replace('\n', ' ') + ("..." if len(content) > 20 else "")
+            body_suggestion = content.replace('\n', ' ').replace('`', '').replace('"', '\\"')
+            if len(body_suggestion) > 100:
+                body_suggestion = body_suggestion[:100] + "..."
+
+            candidate_msg = (
+                "\n\n💡 **個別記憶（決定事項など）の候補**\n"
+                "この日報には重要な決定や方針が含まれている可能性があります。\n"
+                "日報全体とは別に個別でプロジェクト記憶として保存したい場合は、以下を実行してください：\n"
+                f"```\n/remember title:{title_suggestion} body:{body_suggestion} tags:decision,project_note memory_type:project_note\n```"
+            )
+
+        chunks = split_message(out_msg)
+        if candidate_msg:
+            if len(chunks[-1]) + len(candidate_msg) <= 1900:
+                chunks[-1] += candidate_msg
+            else:
+                chunks.append(candidate_msg)
+
+        for chunk in chunks:
+            await interaction.followup.send(chunk, ephemeral=True)
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`", ephemeral=True)
+
+
+# Message Context Menu: 要約する
+@client.tree.context_menu(name="要約する")
+async def context_summarize(interaction: discord.Interaction, message: discord.Message) -> None:
+    print(f"Context menu [要約する] from user_id={interaction.user.id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    try:
+        content = message.content
+        if not content.strip():
+            await interaction.followup.send("⚠️ メッセージ本文が空のため、要約できません。", ephemeral=True)
+            return
+
+        prompt = f"以下の文章を短く要約してください。\n\n文章:\n{content}"
+        print("Calling Ollama for context menu summarize...", flush=True)
+        answer = await ask_ollama(
+            base_url=OLLAMA_BASE_URL,
+            model=DEFAULT_MODEL,
+            prompt=prompt,
+        )
+        msg = f"📝 **要約結果**:\n\n{answer}"
+        for chunk in split_message(msg):
+            await interaction.followup.send(chunk, ephemeral=True)
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`", ephemeral=True)
+
+
 client.run(DISCORD_BOT_TOKEN)
