@@ -15,6 +15,7 @@
 - Memory design: docs/memory-design.md
 - Model routing: docs/model-routing.md
 - Architecture: docs/architecture.md
+- Operations & systemd: docs/operations-systemd.md
 
 ## Hard safety rules
 - Do not connect to Document Inbox yet.

@@ -10,4 +10,4 @@
 - [ ] status 確認系の read-only 実装
 - [ ] Document Inbox との read-only 連携
 - [ ] マルチエージェント化
-- [ ] systemd user service 化による常駐化
+- [x] systemd user service 化による常駐化（自動pull再起動・運用ドキュメント化完了）

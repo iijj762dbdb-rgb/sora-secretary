@@ -8,6 +8,7 @@
 - [x] `/chat` 自然文入力からの read-only 操作（recent/show/export）の直接実行対応と応答の会話感向上
 - [x] AI用入口ドキュメント `docs/ai-codex-brief.md` の追加
 - [x] Discord Message Context Menu 操作（「記憶する」「日報にする」「要約する」）の実装
+- [x] systemd / 自動pull再起動の運用ドキュメント化 (`docs/operations-systemd.md`)
 
 ## 次のステップ
 - [x] `assistant_memory.db` の構築
