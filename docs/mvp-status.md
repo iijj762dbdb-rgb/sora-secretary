@@ -10,6 +10,7 @@
 - [x] Discord Message Context Menu 操作（「記憶する」「日報にする」「要約する」）の実装
 - [x] systemd / 自動pull再起動の運用ドキュメント化 (`docs/operations-systemd.md`)
 - [x] `/status` システム監視コマンド（read-only）の実装
+- [x] `/memory_lint` データベース品質点検コマンドの実装
 
 
 ## 次のステップ

@@ -19,6 +19,7 @@ from assistant_memory import (
     get_recent_memories,
     get_memory,
     export_memories_to_markdown,
+    lint_memories,
 )
 from status_info import build_status_report
 
@@ -597,6 +598,86 @@ async def status_cmd(interaction: discord.Interaction) -> None:
             await interaction.followup.send(chunk)
     except Exception as exc:
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+
+def format_memory_lint(res: dict) -> str:
+    summary = (
+        f"📊 **記憶データベース点検レポート (Memory Lint)**\n\n"
+        f"**1. 件数サマリー**\n"
+        f"- 総記憶数: `{res['total_count']}` 件\n"
+        f"- 有効記憶数 (archived=0): `{res['active_count']}` 件\n"
+        f"- 無効記憶数 (archived=1): `{res['archived_count']}` 件\n"
+    )
+
+    type_strs = []
+    for mtype, count in res["type_breakdown"].items():
+        type_strs.append(f"  - `{mtype}`: {count} 件")
+    type_info = "**2. タイプ別内訳**\n" + ("\n".join(type_strs) if type_strs else "  - なし")
+
+    warnings = []
+
+    if res["empty_tags"]:
+        tag_items = ", ".join([f"`{r['id']}`({r['title'][:10]}...)" for r in res["empty_tags"]])
+        warnings.append(f"⚠️ **タグ未設定 (空タグ) の記憶** ({len(res['empty_tags'])}件検出):\n  - 該当例: {tag_items}")
+
+    if res["short_title"]:
+
+        title_items = ", ".join([f"`{r['id']}`({r['title']})" for r in res["short_title"]])
+        warnings.append(f"⚠️ **タイトルが短すぎる記憶 (5文字未満)** ({len(res['short_title'])}件検出):\n  - 該当例: {title_items}")
+
+    if res["short_body"]:
+        body_items = ", ".join([f"`{r['id']}`({r['title'][:10]}...)" for r in res["short_body"]])
+        warnings.append(f"⚠️ **本文が極端に短いか未入力の記憶 (10文字未満)** ({len(res['short_body'])}件検出):\n  - 該当例: {body_items}")
+
+    if res["long_body"]:
+        long_items = ", ".join([f"`{r['id']}`({r['title'][:10]}...)" for r in res["long_body"]])
+        warnings.append(f"⚠️ **本文が長すぎる記憶 (2000文字超)** ({len(res['long_body'])}件検出):\n  - 該当例: {long_items}")
+
+    if res["sensitivity_normal_count"] > 0:
+        warnings.append(f"ℹ️ **秘匿性がデフォルト (normal) のままの記憶**: `{res['sensitivity_normal_count']}` 件\n  - 必要に応じて適切な公開/秘匿レベルの見直しを推奨します。")
+
+    daily_count = res["type_breakdown"].get("daily_report", 0)
+    if daily_count > 30:
+        warnings.append(f"💡 **日報 (daily_report) が多すぎる注意** ({daily_count}件検出):\n  - 登録件数が30件を超えています。古い日報の整理、あるいはアーカイブ化を検討してください。")
+
+    if res["duplicates"]:
+        dup_items = ", ".join([f"\"{r['title']}\"({r['c']}回)" for r in res["duplicates"]])
+        warnings.append(f"⚠️ **重複タイトルの候補**: {dup_items}\n  - 同じタイトルの記憶が複数存在します。名寄せや集約を推奨します。")
+
+    warnings_info = "**3. 要確認・改善候補**\n" + ("\n\n".join(warnings) if warnings else "✅ 特に要確認の記憶候補はありません。健全なデータベース状態です。")
+
+    old_strs = []
+    for r in res["old_memories"]:
+        old_strs.append(f"  - `{r['created_at']}` | `{r['id']}` | `{r['memory_type']}` | **{r['title']}**")
+    old_info = "**4. 長期保存中の記憶候補 (古い決定事項・プロジェクトノート)**\n" + ("\n".join(old_strs) if old_strs else "  - 該当する古い記憶はありません")
+    old_info += "\n\n※ これらは自動アーカイブされません。詳細確認には `/show_memory <ID>`、不要な場合は `/forget <ID>` をご活用ください。"
+
+    report = (
+        f"{summary}\n"
+        f"{type_info}\n\n"
+        f"{warnings_info}\n\n"
+        f"{old_info}"
+    )
+    return report
+
+
+@client.tree.command(name="memory_lint", description="記憶DBを点検し、タグ無しや重複などの改善候補リストを表示します")
+async def memory_lint_cmd(interaction: discord.Interaction) -> None:
+    print(f"/memory_lint from user_id={interaction.user.id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    try:
+        res = lint_memories()
+        report = format_memory_lint(res)
+        chunks = split_message(report)
+        for chunk in chunks:
+            await interaction.followup.send(chunk, ephemeral=True)
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`", ephemeral=True)
+
 
 
 # Message Context Menu: 記憶する

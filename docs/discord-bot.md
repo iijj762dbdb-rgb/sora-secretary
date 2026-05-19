@@ -18,6 +18,8 @@
 - `/daily`: 作業メモを日報形式に整理して表示（・保存）する
 - `/export_memory`: 記憶をMarkdownに出力する
 - `/status`: システム・Bot・Ollama・データベース・Git等の稼働状態を一覧表示（read-only）
+- `/memory_lint`: 記憶DBのデータ品質、空タグ、重複タイトル、長期保存データを点検（read-only）
+
 
 
 ## /chat の自然文直接実行（Read-only 派生出力）

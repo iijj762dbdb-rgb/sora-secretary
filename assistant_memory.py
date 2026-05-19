@@ -239,3 +239,67 @@ def get_memory_stats() -> dict:
     finally:
         conn.close()
 
+
+def lint_memories() -> dict:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+
+        # 1. Counts
+        cursor.execute("SELECT COUNT(*) FROM memories")
+        total_count = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM memories WHERE archived = 0")
+        active_count = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM memories WHERE archived = 1")
+        archived_count = cursor.fetchone()[0]
+
+        # 2. Type breakdown
+        cursor.execute("SELECT memory_type, COUNT(*) FROM memories GROUP BY memory_type")
+        type_rows = cursor.fetchall()
+        type_breakdown = {r[0]: r[1] for r in type_rows}
+
+        # 3. Empty tags (active only)
+        cursor.execute("SELECT id, title, memory_type FROM memories WHERE archived = 0 AND (tags IS NULL OR tags = '' OR tags = '[]' OR tags = 'None') LIMIT 10")
+        empty_tags = [dict(r) for r in cursor.fetchall()]
+
+        # 4. Too short title (< 5 chars, active only)
+        cursor.execute("SELECT id, title, memory_type FROM memories WHERE archived = 0 AND LENGTH(title) < 5 LIMIT 10")
+        short_title = [dict(r) for r in cursor.fetchall()]
+
+        # 5. Too short body (< 10 chars, active only)
+        cursor.execute("SELECT id, title, memory_type FROM memories WHERE archived = 0 AND (body IS NULL OR LENGTH(body) < 10) LIMIT 10")
+        short_body = [dict(r) for r in cursor.fetchall()]
+
+        # 6. Too long body (> 2000 chars, active only)
+        cursor.execute("SELECT id, title, memory_type FROM memories WHERE archived = 0 AND body IS NOT NULL AND LENGTH(body) > 2000 LIMIT 10")
+        long_body = [dict(r) for r in cursor.fetchall()]
+
+        # 7. Sensitivity is normal count (active only)
+        cursor.execute("SELECT COUNT(*) FROM memories WHERE archived = 0 AND sensitivity = 'normal'")
+        sensitivity_normal_count = cursor.fetchone()[0]
+
+        # 8. Duplicate title candidates (active only)
+        cursor.execute("SELECT title, COUNT(*) as c FROM memories WHERE archived = 0 GROUP BY title HAVING c > 1 LIMIT 10")
+        duplicates = [dict(r) for r in cursor.fetchall()]
+
+        # 9. Old active decisions / project_notes
+        cursor.execute("SELECT id, title, memory_type, created_at FROM memories WHERE archived = 0 AND memory_type IN ('decision', 'project_note') ORDER BY created_at ASC LIMIT 5")
+        old_memories = [dict(r) for r in cursor.fetchall()]
+
+        return {
+            "total_count": total_count,
+            "active_count": active_count,
+            "archived_count": archived_count,
+            "type_breakdown": type_breakdown,
+            "empty_tags": empty_tags,
+            "short_title": short_title,
+            "short_body": short_body,
+            "long_body": long_body,
+            "sensitivity_normal_count": sensitivity_normal_count,
+            "duplicates": duplicates,
+            "old_memories": old_memories
+        }
+    finally:
+        conn.close()
+
+

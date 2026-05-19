@@ -8,6 +8,8 @@
 - [ ] `/prompt` コマンド
 - [ ] model routing (router agent)
 - [x] status 確認系の read-only 実装（/status コマンド・稼働ステータス一元取得）
+- [x] 記憶データベースのデータ品質点検・名寄せ候補の検出機能（/memory_lint）
 - [ ] Document Inbox との read-only 連携
+
 - [ ] マルチエージェント化
 - [x] systemd user service 化による常駐化（自動pull再起動・運用ドキュメント化完了）
