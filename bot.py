@@ -9,6 +9,11 @@ from config import (
     DEFAULT_MODEL,
     DISCORD_GUILD_ID_INT,
     MEMORY_DIR,
+    ENABLE_MESSAGE_CONTENT_INTENT,
+    MESSAGE_CONTENT_PREFIX,
+    MESSAGE_CONTENT_ALLOWED_CHANNEL_IDS,
+    ASSISTANT_NAME,
+    ASSISTANT_PERSONA,
 )
 from ollama_client import ask_ollama
 from assistant_memory import (
@@ -27,6 +32,8 @@ from status_info import build_status_report
 class SoraSecretary(discord.Client):
     def __init__(self) -> None:
         intents = discord.Intents.default()
+        if ENABLE_MESSAGE_CONTENT_INTENT:
+            intents.message_content = True
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
 
@@ -44,6 +51,54 @@ class SoraSecretary(discord.Client):
         init_db()
         print("assistant_memory database initialized.", flush=True)
         print(f"Logged in as {self.user}.")
+
+    async def on_message(self, message: discord.Message) -> None:
+        if not ENABLE_MESSAGE_CONTENT_INTENT:
+            return
+        if message.author == self.user:
+            return
+        if message.author.bot:
+            return
+        if not is_allowed(message.author.id):
+            return
+        if MESSAGE_CONTENT_ALLOWED_CHANNEL_IDS and message.channel.id not in MESSAGE_CONTENT_ALLOWED_CHANNEL_IDS:
+            return
+
+        content = message.content.strip()
+        has_prefix = False
+        trigger_len = 0
+
+        if content.startswith(MESSAGE_CONTENT_PREFIX):
+            has_prefix = True
+            trigger_len = len(MESSAGE_CONTENT_PREFIX)
+        else:
+            mentions_to_check = [f"<@!{self.user.id}>", f"<@{self.user.id}>"]
+            for mention in mentions_to_check:
+                if content.startswith(mention):
+                    has_prefix = True
+                    trigger_len = len(mention)
+                    break
+
+        if not has_prefix:
+            return
+
+        text = content[trigger_len:].strip()
+        if not text:
+            return
+
+        if len(text) > 4000:
+            await message.channel.send("⚠️ 送信されたテキストが長すぎます（最大4000文字）。")
+            return
+
+        print(f"on_message chat from user_id={message.author.id} in channel_id={message.channel.id}: {text}", flush=True)
+
+        async with message.channel.typing():
+            try:
+                chunks = await run_chat_flow(text)
+                for chunk in chunks:
+                    await message.channel.send(chunk)
+            except Exception as exc:
+                await message.channel.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
 
 
 client = SoraSecretary()
@@ -133,6 +188,175 @@ def format_memory_detail(mem: dict) -> str:
         f"**Body**:\n{mem['body']}"
     ]
     return "\n".join(lines)
+
+
+async def run_chat_flow(text: str) -> list[str]:
+    is_recent = any(k in text for k in ["最近の記憶", "最近覚えたこと", "最新の記憶"]) or (
+        "記憶" in text and "件" in text and any(k in text for k in ["見せて", "教えて", "表示"])
+    )
+
+    mem_id = extract_memory_id(text)
+    is_show = (mem_id is not None) or (
+        not is_recent and (
+            "memory_id" in text or
+            "の中身" in text or
+            (any(k in text for k in ["記憶", "詳細"]) and any(k in text for k in ["見せて", "教えて", "表示"]))
+        )
+    )
+
+    is_export = any(k in text for k in [
+        "Markdownにして", "Markdownにエクスポート", "Markdown export", "Markdownに書き出",
+        "記憶を書き出して", "記憶をエクスポート", "件エクスポート"
+    ])
+
+    is_remember = any(k in text for k in ["覚えて", "記憶して", "メモして", "保存して"])
+    is_search = any(k in text for k in ["探して", "検索して", "前に", "覚えてる"])
+    is_forget = any(k in text for k in ["消して", "忘れて", "削除して", "無効化して"])
+    is_daily = any(k in text for k in ["まとめて", "日報", "今日の作業"])
+
+    if is_export:
+        limit = extract_limit(text, default=20, max_value=100)
+        filepath, count = export_memories_to_markdown(limit=limit, memory_dir=MEMORY_DIR)
+        if count == 0:
+            return ["エクスポート対象となる記憶がありませんでした。"]
+        return [
+            f"✅ 最近の記憶（{count}件）をMarkdownに書き出しました。\n"
+            f"**出力先**: `{filepath}`"
+        ]
+
+    elif is_show:
+        if mem_id:
+            mem = get_memory(mem_id)
+            if not mem:
+                return [f"⚠️ 指定された記憶 ID `{mem_id}` は見つかりませんでした。"]
+            intro = "指定された記憶を確認しました。詳細を表示します：\n\n"
+            msg = intro + format_memory_detail(mem)
+            return split_message(msg)
+        else:
+            return [
+                "⚠️ 記憶の詳細を表示するには、`mem_` で始まる記憶IDを文中に含めるか、`/show_memory memory_id:...` コマンドを使用してください。\n"
+                "例：「記憶 mem_20260519_abcdef12 の詳細を見せて」"
+            ]
+
+    elif is_recent:
+        limit = extract_limit(text, default=10, max_value=20)
+        results = get_recent_memories(limit=limit)
+        if not results:
+            return ["最近の記憶はありません。"]
+
+        intro = "最近の記憶を表示します：\n\n"
+        msg = intro + format_recent_memories(results)
+        return split_message(msg)
+
+    elif is_daily:
+        prompt = f"以下の作業メモを元に、日報形式（今日やったこと、決めたこと、次にやること、注意点など）に整理してください。\n\n作業メモ:\n{text}"
+        print("Calling Ollama for daily report...", flush=True)
+        answer = await ask_ollama(
+            base_url=OLLAMA_BASE_URL,
+            model=DEFAULT_MODEL,
+            prompt=prompt,
+        )
+        title = "日報: " + text[:20].replace("\n", " ") + ("..." if len(text) > 20 else "")
+        mem_id = remember_memory(
+            title=title,
+            body=answer,
+            tags="daily_report",
+            memory_type="daily_report",
+            sensitivity="normal"
+        )
+
+        out_msg = f"✅ 日報を作成し、記憶しました (ID: `{mem_id}`).\n\n{answer}"
+
+        combined = text + "\n" + answer
+        candidate_msg = ""
+        if detect_memory_candidate(combined):
+            title_suggestion = "決定事項: " + text[:20].replace('\n', ' ') + ("..." if len(text) > 20 else "")
+            body_suggestion = text.replace('\n', ' ').replace('`', '').replace('"', '\\"')
+            if len(body_suggestion) > 100:
+                body_suggestion = body_suggestion[:100] + "..."
+
+            candidate_msg = (
+                "\n\n💡 **個別記憶（決定事項など）の候補**\n"
+                "この日報には重要な決定や方針が含まれている可能性があります。\n"
+                "日報全体とは別に個別でプロジェクト記憶として保存したい場合は、以下を実行してください：\n"
+                f"```\n/remember title:{title_suggestion} body:{body_suggestion} tags:decision,project_note memory_type:project_note\n```"
+            )
+
+        chunks = split_message(out_msg)
+        if candidate_msg:
+            if len(chunks[-1]) + len(candidate_msg) <= 1900:
+                chunks[-1] += candidate_msg
+            else:
+                chunks.append(candidate_msg)
+        return chunks
+
+    elif is_remember:
+        title = text[:30].replace("\n", " ") + ("..." if len(text) > 30 else "")
+        mem_id = remember_memory(
+            title=title,
+            body=text,
+            tags="",
+            memory_type="conversation_note",
+            sensitivity="normal"
+        )
+        msg = f"✅ 以下の内容を記憶しました。\n**ID**: `{mem_id}`\n**Title**: {title}"
+        return [msg]
+
+    elif is_search:
+        results = search_memories(text)
+        if not results:
+            return ["関連する記憶は見つかりませんでした。"]
+
+        lines = [f"🔍 **検索結果** (上位{len(results)}件):"]
+        for r in results:
+            lines.append(f"- **{r['title']}** (`{r['id']}`) [{r['created_at']}]\n  {r['summary']}...")
+
+        msg = "\n".join(lines)
+        return split_message(msg)
+
+    elif is_forget:
+        results = search_memories(text)
+        if not results:
+            return ["削除・無効化の候補となる記憶は見つかりませんでした。"]
+
+        lines = ["⚠️ 直接の削除や無効化は行いません。無効化するには以下のIDを指定して `/forget memory_id:...` を実行してください。\n", "🔍 **候補** (上位5件):"]
+        for r in results:
+            lines.append(f"- **{r['title']}** (`{r['id']}`)")
+
+        msg = "\n".join(lines)
+        return split_message(msg)
+
+    else: # normal_chat
+        print("Calling Ollama (chat)...", flush=True)
+        answer = await ask_ollama(
+            base_url=OLLAMA_BASE_URL,
+            model=DEFAULT_MODEL,
+            prompt=text,
+        )
+        print("Got answer from Ollama.", flush=True)
+
+        combined = text + "\n" + answer
+        candidate_msg = ""
+        if detect_memory_candidate(combined):
+            title_suggestion = text[:20].replace('\n', ' ') + ("..." if len(text) > 20 else "")
+            body_suggestion = text.replace('\n', ' ').replace('`', '').replace('"', '\\"')
+            if len(body_suggestion) > 100:
+                body_suggestion = body_suggestion[:100] + "..."
+
+            candidate_msg = (
+                "\n\n💡 **長期記憶の候補を検出しました**\n"
+                "この会話には方針や決定などの重要な情報が含まれている可能性があります。\n"
+                "記憶に保存したい場合は、以下のコマンドをコピーして実行してください：\n"
+                f"```\n/remember title:{title_suggestion} body:{body_suggestion} tags:方針,決定\n```"
+            )
+
+        chunks = split_message(answer)
+        if candidate_msg:
+            if len(chunks[-1]) + len(candidate_msg) <= 1900:
+                chunks[-1] += candidate_msg
+            else:
+                chunks.append(candidate_msg)
+        return chunks
 
 
 @client.tree.command(name="ask", description="SORA上のローカルLLMに質問します")
@@ -260,191 +484,10 @@ async def chat(interaction: discord.Interaction, text: str) -> None:
         return
 
     await interaction.response.defer(thinking=True)
-
-    is_recent = any(k in text for k in ["最近の記憶", "最近覚えたこと", "最新の記憶"]) or (
-        "記憶" in text and "件" in text and any(k in text for k in ["見せて", "教えて", "表示"])
-    )
-
-    mem_id = extract_memory_id(text)
-    is_show = (mem_id is not None) or (
-        not is_recent and (
-            "memory_id" in text or
-            "の中身" in text or
-            (any(k in text for k in ["記憶", "詳細"]) and any(k in text for k in ["見せて", "教えて", "表示"]))
-        )
-    )
-
-    is_export = any(k in text for k in [
-        "Markdownにして", "Markdownにエクスポート", "Markdown export", "Markdownに書き出",
-        "記憶を書き出して", "記憶をエクスポート", "件エクスポート"
-    ])
-
-    is_remember = any(k in text for k in ["覚えて", "記憶して", "メモして", "保存して"])
-    is_search = any(k in text for k in ["探して", "検索して", "前に", "覚えてる"])
-    is_forget = any(k in text for k in ["消して", "忘れて", "削除して", "無効化して"])
-    is_daily = any(k in text for k in ["まとめて", "日報", "今日の作業"])
-
     try:
-        if is_export:
-            limit = extract_limit(text, default=20, max_value=100)
-            filepath, count = export_memories_to_markdown(limit=limit, memory_dir=MEMORY_DIR)
-            if count == 0:
-                await interaction.followup.send("エクスポート対象となる記憶がありませんでした。")
-                return
-            await interaction.followup.send(
-                f"✅ 最近の記憶（{count}件）をMarkdownに書き出しました。\n"
-                f"**出力先**: `{filepath}`"
-            )
-            return
-
-        elif is_show:
-            if mem_id:
-                mem = get_memory(mem_id)
-                if not mem:
-                    await interaction.followup.send(f"⚠️ 指定された記憶 ID `{mem_id}` は見つかりませんでした。")
-                    return
-                intro = "指定された記憶を確認しました。詳細を表示します：\n\n"
-                msg = intro + format_memory_detail(mem)
-                for chunk in split_message(msg):
-                    await interaction.followup.send(chunk)
-            else:
-                await interaction.followup.send(
-                    "⚠️ 記憶の詳細を表示するには、`mem_` で始まる記憶IDを文中に含めるか、`/show_memory memory_id:...` コマンドを使用してください。\n"
-                    "例：「記憶 mem_20260519_abcdef12 の詳細を見せて」"
-                )
-            return
-
-        elif is_recent:
-            limit = extract_limit(text, default=10, max_value=20)
-            results = get_recent_memories(limit=limit)
-            if not results:
-                await interaction.followup.send("最近の記憶はありません。")
-                return
-
-            intro = "最近の記憶を表示します：\n\n"
-            msg = intro + format_recent_memories(results)
-            for chunk in split_message(msg):
-                await interaction.followup.send(chunk)
-            return
-
-        elif is_daily:
-            prompt = f"以下の作業メモを元に、日報形式（今日やったこと、決めたこと、次にやること、注意点など）に整理してください。\n\n作業メモ:\n{text}"
-            print("Calling Ollama for daily report...", flush=True)
-            answer = await ask_ollama(
-                base_url=OLLAMA_BASE_URL,
-                model=DEFAULT_MODEL,
-                prompt=prompt,
-            )
-            title = "日報: " + text[:20].replace("\n", " ") + ("..." if len(text) > 20 else "")
-            mem_id = remember_memory(
-                title=title, 
-                body=answer, 
-                tags="daily_report", 
-                memory_type="daily_report", 
-                sensitivity="normal"
-            )
-            
-            out_msg = f"✅ 日報を作成し、記憶しました (ID: `{mem_id}`).\n\n{answer}"
-            
-            combined = text + "\n" + answer
-            candidate_msg = ""
-            if detect_memory_candidate(combined):
-                title_suggestion = "決定事項: " + text[:20].replace('\n', ' ') + ("..." if len(text) > 20 else "")
-                body_suggestion = text.replace('\n', ' ').replace('`', '').replace('"', '\\"')
-                if len(body_suggestion) > 100:
-                    body_suggestion = body_suggestion[:100] + "..."
-                
-                candidate_msg = (
-                    "\n\n💡 **個別記憶（決定事項など）の候補**\n"
-                    "この日報には重要な決定や方針が含まれている可能性があります。\n"
-                    "日報全体とは別に個別でプロジェクト記憶として保存したい場合は、以下を実行してください：\n"
-                    f"```\n/remember title:{title_suggestion} body:{body_suggestion} tags:decision,project_note memory_type:project_note\n```"
-                )
-                
-            chunks = split_message(out_msg)
-            if candidate_msg:
-                if len(chunks[-1]) + len(candidate_msg) <= 1900:
-                    chunks[-1] += candidate_msg
-                else:
-                    chunks.append(candidate_msg)
-                    
-            for chunk in chunks:
-                await interaction.followup.send(chunk)
-
-        elif is_remember:
-            title = text[:30].replace("\n", " ") + ("..." if len(text) > 30 else "")
-            mem_id = remember_memory(
-                title=title, 
-                body=text, 
-                tags="", 
-                memory_type="conversation_note", 
-                sensitivity="normal"
-            )
-            msg = f"✅ 以下の内容を記憶しました。\n**ID**: `{mem_id}`\n**Title**: {title}"
-            await interaction.followup.send(msg)
-
-        elif is_search:
-            results = search_memories(text)
-            if not results:
-                await interaction.followup.send("関連する記憶は見つかりませんでした。")
-                return
-
-            lines = [f"🔍 **検索結果** (上位{len(results)}件):"]
-            for r in results:
-                lines.append(f"- **{r['title']}** (`{r['id']}`) [{r['created_at']}]\n  {r['summary']}...")
-            
-            msg = "\n".join(lines)
-            for chunk in split_message(msg):
-                await interaction.followup.send(chunk)
-
-        elif is_forget:
-            results = search_memories(text)
-            if not results:
-                await interaction.followup.send("削除・無効化の候補となる記憶は見つかりませんでした。")
-                return
-
-            lines = ["⚠️ 直接の削除や無効化は行いません。無効化するには以下のIDを指定して `/forget memory_id:...` を実行してください。\n", "🔍 **候補** (上位5件):"]
-            for r in results:
-                lines.append(f"- **{r['title']}** (`{r['id']}`)")
-            
-            msg = "\n".join(lines)
-            for chunk in split_message(msg):
-                await interaction.followup.send(chunk)
-
-        else: # normal_chat
-            print("Calling Ollama (chat)...", flush=True)
-            answer = await ask_ollama(
-                base_url=OLLAMA_BASE_URL,
-                model=DEFAULT_MODEL,
-                prompt=text,
-            )
-            print("Got answer from Ollama.", flush=True)
-            
-            combined = text + "\n" + answer
-            candidate_msg = ""
-            if detect_memory_candidate(combined):
-                title_suggestion = text[:20].replace('\n', ' ') + ("..." if len(text) > 20 else "")
-                body_suggestion = text.replace('\n', ' ').replace('`', '').replace('"', '\\"')
-                if len(body_suggestion) > 100:
-                    body_suggestion = body_suggestion[:100] + "..."
-                
-                candidate_msg = (
-                    "\n\n💡 **長期記憶の候補を検出しました**\n"
-                    "この会話には方針や決定などの重要な情報が含まれている可能性があります。\n"
-                    "記憶に保存したい場合は、以下のコマンドをコピーして実行してください：\n"
-                    f"```\n/remember title:{title_suggestion} body:{body_suggestion} tags:方針,決定\n```"
-                )
-            
-            chunks = split_message(answer)
-            if candidate_msg:
-                if len(chunks[-1]) + len(candidate_msg) <= 1900:
-                    chunks[-1] += candidate_msg
-                else:
-                    chunks.append(candidate_msg)
-            
-            for chunk in chunks:
-                await interaction.followup.send(chunk)
-
+        chunks = await run_chat_flow(text)
+        for chunk in chunks:
+            await interaction.followup.send(chunk)
     except Exception as exc:
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
 

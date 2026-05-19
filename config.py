@@ -34,3 +34,22 @@ if not ALLOWED_DISCORD_USER_IDS:
 
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID", "")
 DISCORD_GUILD_ID_INT = int(DISCORD_GUILD_ID) if DISCORD_GUILD_ID.strip().isdigit() else None
+
+ENABLE_MESSAGE_CONTENT_INTENT = os.getenv("ENABLE_MESSAGE_CONTENT_INTENT", "false").lower() == "true"
+MESSAGE_CONTENT_PREFIX = os.getenv("MESSAGE_CONTENT_PREFIX", "sora:")
+
+_raw_channel_ids = os.getenv("MESSAGE_CONTENT_ALLOWED_CHANNEL_IDS", "")
+MESSAGE_CONTENT_ALLOWED_CHANNEL_IDS = set()
+for value in _raw_channel_ids.split(","):
+    value = value.strip()
+    if not value:
+        continue
+    if not value.isdigit():
+        raise RuntimeError(
+            "MESSAGE_CONTENT_ALLOWED_CHANNEL_IDS must be numeric Discord channel IDs, "
+            f"but got: {value!r}"
+        )
+    MESSAGE_CONTENT_ALLOWED_CHANNEL_IDS.add(int(value))
+
+ASSISTANT_NAME = os.getenv("ASSISTANT_NAME", "SORA Secretary")
+ASSISTANT_PERSONA = os.getenv("ASSISTANT_PERSONA", "calm_secretary")

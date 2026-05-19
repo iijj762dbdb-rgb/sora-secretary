@@ -2,8 +2,17 @@ import os
 import subprocess
 import httpx
 from datetime import datetime
-from config import ASSISTANT_MEMORY_DB, CHAT_MODEL, CODE_MODEL, DEFAULT_MODEL, OLLAMA_BASE_URL, SUMMARY_MODEL
+from config import (
+    ASSISTANT_MEMORY_DB,
+    CHAT_MODEL,
+    CODE_MODEL,
+    DEFAULT_MODEL,
+    OLLAMA_BASE_URL,
+    SUMMARY_MODEL,
+    ENABLE_MESSAGE_CONTENT_INTENT,
+)
 from assistant_memory import get_memory_stats
+
 
 
 ROUTED_MODELS = {
@@ -130,6 +139,7 @@ async def build_status_report() -> str:
         f"**1. Bot基本情報**\n"
         f"- 状態: 🟢 Active\n"
         f"- 現在時刻: `{now_str}`\n"
+        f"- Message Content Intent: `{'有効' if ENABLE_MESSAGE_CONTENT_INTENT else '無効'}`\n"
         f"- Ollama接続先: `{OLLAMA_BASE_URL}`\n"
         f"- 用途別モデル設定:\n{model_info}"
     )

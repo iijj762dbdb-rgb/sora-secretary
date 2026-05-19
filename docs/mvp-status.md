@@ -12,6 +12,9 @@
 - [x] `/status` システム監視コマンド（read-only）の実装
 - [x] `/memory_lint` データベース品質点検コマンドの実装
 - [x] 用途別モデル設定の最小反映（`CHAT_MODEL` / `SUMMARY_MODEL` / `CODE_MODEL`）
+- [x] Message Content Intent の env gated 導入と on_message 処理実装
+- [x] 簡易人格（落ち着いた個人秘書: SORA Secretary）の system prompt 実装
+- [x] 自然文ルーティングの共通関数化（run_chat_flow）
 
 ## 次のステップ
 - [x] `assistant_memory.db` の構築
@@ -22,3 +25,4 @@
 - [x] `/show_memory` および `/export_memory` コマンドの実装
 - [x] SORA実機で `/status` の用途別モデル表示、`/ask`、`/chat`、`/daily`、Context Menu「日報にする」「要約する」を確認する
 - [ ] 将来の `/code` やコード相談入口で `CODE_MODEL` を実利用するか検討する
+
