@@ -32,9 +32,13 @@ from status_info import build_status_report
 class SoraSecretary(discord.Client):
     def __init__(self) -> None:
         intents = discord.Intents.default()
+        intents.guilds = True
+        intents.messages = True
         if ENABLE_MESSAGE_CONTENT_INTENT:
             intents.message_content = True
         print(f"message_content_debug: ENABLE_MESSAGE_CONTENT_INTENT={ENABLE_MESSAGE_CONTENT_INTENT}", flush=True)
+        print(f"message_content_debug: intents.guilds={intents.guilds}", flush=True)
+        print(f"message_content_debug: intents.messages={intents.messages}", flush=True)
         print(f"message_content_debug: intents.message_content={intents.message_content}", flush=True)
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
