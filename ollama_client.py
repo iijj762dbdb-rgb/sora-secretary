@@ -1,5 +1,16 @@
 import httpx
 
+from config import CHAT_MODEL, DEFAULT_MODEL, SUMMARY_MODEL
+
+
+def resolve_ollama_model(model: str, prompt: str) -> str:
+    """Return the configured model for the current lightweight routing phase."""
+    if "日報形式" in prompt or "短く要約" in prompt:
+        return SUMMARY_MODEL
+    if model == DEFAULT_MODEL:
+        return CHAT_MODEL
+    return model
+
 
 async def ask_ollama(base_url: str, model: str, prompt: str) -> str:
     system_prompt = (
@@ -9,8 +20,10 @@ async def ask_ollama(base_url: str, model: str, prompt: str) -> str:
         "提案だけに留めてください。"
     )
 
+    selected_model = resolve_ollama_model(model=model, prompt=prompt)
+
     payload = {
-        "model": model,
+        "model": selected_model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
