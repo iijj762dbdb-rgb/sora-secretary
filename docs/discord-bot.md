@@ -8,19 +8,17 @@
 - `ALLOWED_DISCORD_USER_IDS` による厳格なアクセス制限を行い、自分（開発者）だけが利用できるようにします。許可外ユーザーからの呼び出しは ephemeral で拒否します。
 
 ## 初期コマンド
-- `/ask`: Ollama を用いてLLMに質問する
-- `/chat`: 自然文から意図を解釈し、記憶・検索・会話等へルーティングする（必要に応じて半自律的に記憶候補を提示する。また、読み取り専用操作は自然文から直接実行します）
+- `/ask`: Ollama を用いてLLMに質問する。通常会話用として `CHAT_MODEL` を使います。
+- `/chat`: 自然文から意図を解釈し、記憶・検索・会話等へルーティングする（必要に応じて半自律的に記憶候補を提示する。また、読み取り専用操作は自然文から直接実行します）。通常会話は `CHAT_MODEL`、日報系は `SUMMARY_MODEL` を使います。
 - `/remember`: 情報を記憶に保存する
 - `/search`: 記憶を検索する
 - `/show_memory`: 指定した記憶の詳細を表示する
 - `/recent_memories`: 最近の記憶を表示する
 - `/forget`: 記憶を無効化する
-- `/daily`: 作業メモを日報形式に整理して表示（・保存）する
+- `/daily`: 作業メモを日報形式に整理して表示（・保存）する。要約・整理用途として `SUMMARY_MODEL` を使います。
 - `/export_memory`: 記憶をMarkdownに出力する
-- `/status`: システム・Bot・Ollama・データベース・Git等の稼働状態を一覧表示（read-only）
+- `/status`: システム・Bot・Ollama・データベース・Git等の稼働状態を一覧表示（read-only）。用途別モデル設定とOllama上の存在確認も表示します。
 - `/memory_lint`: 記憶DBのデータ品質、空タグ、重複タイトル、長期保存データを点検（read-only）
-
-
 
 ## /chat の自然文直接実行（Read-only 派生出力）
 会話体験向上のため、安全な読み取り専用操作については自然文から直接相当コマンドを呼び出します：
@@ -37,9 +35,17 @@
    - `memory_type`: `conversation_note`
    - `sensitivity`: `normal`
    - 保存完了後、新しく発行された `memory_id` とタイトルを ephemeral 応答します。
-2. **「日報にする」**: 選択したメッセージ本文を Ollama にて日報形式に自動整理し、`daily_report` として `assistant_memory.db` に保存します。
-3. **「要約する」**: 選択したメッセージ本文を Ollama にて短縮要約し、結果を ephemeral 応答します（データベースへの保存は行いません）。
+2. **「日報にする」**: 選択したメッセージ本文を Ollama にて `SUMMARY_MODEL` で日報形式に自動整理し、`daily_report` として `assistant_memory.db` に保存します。
+3. **「要約する」**: 選択したメッセージ本文を Ollama にて `SUMMARY_MODEL` で短縮要約し、結果を ephemeral 応答します（データベースへの保存は行いません）。
+
+## モデル利用
+初期の最小実装では、完全自動ルーティングではなく用途別環境変数を使います。
+
+- `CHAT_MODEL`: `/ask` と通常 `/chat`
+- `SUMMARY_MODEL`: `/daily`、`/chat` 日報系、Context Menu「日報にする」「要約する」
+- `CODE_MODEL`: まず `/status` 表示のみ
 
 ## 将来候補
 - `/prompt`: 他LLM向けプロンプトの作成
+- `/code`: コード相談やログ読解用に `CODE_MODEL` を利用する入口
 
