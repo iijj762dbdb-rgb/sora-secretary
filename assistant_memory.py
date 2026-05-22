@@ -40,7 +40,23 @@ def init_db():
             archived INTEGER DEFAULT 0
         );
         ''')
-        
+
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS todos (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            body TEXT,
+            status TEXT DEFAULT 'todo',
+            priority TEXT DEFAULT 'normal',
+            due_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT,
+            source TEXT,
+            related_memory_id TEXT
+        );
+        ''')
+
         # FTS5 virtual table
         cursor.execute('''
         CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts
@@ -82,7 +98,7 @@ def remember_memory(title: str, body: str, tags: str = "", memory_type: str = "c
         mem_id = f"mem_{datetime.now().strftime('%Y%m%d')}_{uuid.uuid4().hex[:8]}"
         now = _now_str()
         summary = body[:200]
-        
+
         cursor = conn.cursor()
         cursor.execute('''
         INSERT INTO memories (
@@ -98,7 +114,7 @@ def search_memories(query: str, limit: int = 5) -> list[dict]:
     conn = _get_conn()
     try:
         cursor = conn.cursor()
-        
+
         # Using FTS5
         sql = '''
         SELECT m.id, m.title, m.summary, m.tags, m.created_at
@@ -108,9 +124,9 @@ def search_memories(query: str, limit: int = 5) -> list[dict]:
         ORDER BY rank
         LIMIT ?
         '''
-        
+
         try:
-            # Escape query properly for FTS5 if it contains special characters, 
+            # Escape query properly for FTS5 if it contains special characters,
             # simplest is to wrap in quotes for phrase matching.
             # However, users might use spaces, so let's just sanitize it a bit by replacing double quotes.
             safe_query = query.replace('"', '""')
@@ -129,7 +145,7 @@ def search_memories(query: str, limit: int = 5) -> list[dict]:
             '''
             cursor.execute(fallback_sql, (like_query, like_query, like_query, like_query, limit))
             rows = cursor.fetchall()
-            
+
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -177,24 +193,24 @@ def export_memories_to_markdown(limit: int, memory_dir: str) -> tuple[str, int]:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM memories WHERE archived = 0 ORDER BY created_at DESC LIMIT ?", (limit,))
         rows = cursor.fetchall()
-        
+
         if not rows:
             return "", 0
-            
+
         export_dir = os.path.join(memory_dir, "exports")
         os.makedirs(export_dir, exist_ok=True)
-        
+
         now_str = datetime.now().strftime("%Y-%m-%d-%H%M%S")
         filename = f"{now_str}-memory-export.md"
         filepath = os.path.join(export_dir, filename)
-        
+
         count = len(rows)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(f"# SORA Secretary Memory Export\n\n")
             f.write(f"- **Export Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"- **Count**: {count}\n\n")
             f.write("---\n\n")
-            
+
             for r in rows:
                 f.write(f"## {r['title']} (`{r['id']}`)\n")
                 f.write(f"- **Type**: {r['memory_type']}\n")
@@ -204,10 +220,95 @@ def export_memories_to_markdown(limit: int, memory_dir: str) -> tuple[str, int]:
                 if r['body']:
                     f.write(f"### Body\n{r['body']}\n\n")
                 f.write("---\n\n")
-                
+
         return filepath, count
     finally:
         conn.close()
+
+def create_todo(title: str, body: str = "", priority: str = "normal", due_at: str = None, source: str = None, related_memory_id: str = None) -> str:
+    conn = _get_conn()
+    try:
+        todo_id = f"todo_{datetime.now().strftime('%Y%m%d')}_{uuid.uuid4().hex[:8]}"
+        now = _now_str()
+        cursor = conn.cursor()
+        cursor.execute('''
+        INSERT INTO todos (
+            id, title, body, status, priority, due_at, created_at, updated_at, source, related_memory_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (todo_id, title, body, "todo", priority, due_at, now, now, source, related_memory_id))
+        conn.commit()
+        return todo_id
+    finally:
+        conn.close()
+
+def list_todos(status: str = None, limit: int = 50) -> list[dict]:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        if status:
+            cursor.execute("SELECT * FROM todos WHERE status = ? ORDER BY created_at DESC LIMIT ?", (status, limit))
+        else:
+            cursor.execute("SELECT * FROM todos WHERE status != 'archived' ORDER BY created_at DESC LIMIT ?", (limit,))
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def get_todo(todo_id: str) -> dict | None:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM todos WHERE id = ? AND status != 'archived'", (todo_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+def update_todo_status(todo_id: str, status: str) -> bool:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        now = _now_str()
+        completed_at = now if status == 'done' else None
+
+        if status == 'done':
+            cursor.execute("UPDATE todos SET status = ?, updated_at = ?, completed_at = ? WHERE id = ?", (status, now, completed_at, todo_id))
+        else:
+            cursor.execute("UPDATE todos SET status = ?, updated_at = ? WHERE id = ?", (status, now, todo_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+def complete_todo(todo_id: str) -> bool:
+    return update_todo_status(todo_id, 'done')
+
+def archive_todo(todo_id: str) -> bool:
+    return update_todo_status(todo_id, 'archived')
+
+def get_todo_stats() -> dict:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        # Ensure table exists in case init_db hasn't run yet in some flows
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='todos'")
+        if not cursor.fetchone():
+            return {"todo": 0, "doing": 0, "done": 0, "archived": 0, "expired": 0}
+
+        cursor.execute("SELECT status, COUNT(*) FROM todos GROUP BY status")
+        rows = cursor.fetchall()
+        stats = {"todo": 0, "doing": 0, "done": 0, "archived": 0, "expired": 0}
+        for r in rows:
+            status = r[0]
+            if status in stats:
+                stats[status] = r[1]
+
+        now = _now_str()
+        cursor.execute("SELECT COUNT(*) FROM todos WHERE status IN ('todo', 'doing') AND due_at IS NOT NULL AND due_at < ?", (now,))
+        stats["expired"] = cursor.fetchone()[0]
+        return stats
+    finally:
+        conn.close()
+
 def get_memory_stats() -> dict:
     conn = _get_conn()
     try:

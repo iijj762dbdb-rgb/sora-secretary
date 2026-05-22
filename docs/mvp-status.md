@@ -18,11 +18,12 @@
 
 ## 次のステップ
 - [x] `assistant_memory.db` の構築
-- [x] `/remember`, `/search`, `/forget` コマンドの実装
-- [x] 自然文入力 `/chat text` コマンドの実装
-- [x] `/daily` および `/recent_memories` コマンドの実装
-- [x] 半自律的な記憶候補提示機能の実装
-- [x] `/show_memory` および `/export_memory` コマンドの実装
-- [x] SORA実機で `/status` の用途別モデル表示、`/ask`、`/chat`、`/daily`、Context Menu「日報にする」「要約する」を確認する
+- `/remember`, `/search`, `/forget` コマンドの実装
+- 自然文入力 `/chat text` コマンドの実装
+- `/daily` および `/recent_memories` コマンドの実装
+- 半自律的な記憶候補提示機能の実装
+- `/show_memory` および `/export_memory` コマンドの実装
+- SORA実機で `/status` の用途別モデル表示、`/ask`、`/chat`、`/daily`、Context Menu「日報にする」「要約する」を確認する
+- Phase 2-A: ToDo / next_action の最小実装 (todos テーブル、スラッシュコマンド、自然文ルーティング)
 - [ ] 将来の `/code` やコード相談入口で `CODE_MODEL` を実利用するか検討する
 

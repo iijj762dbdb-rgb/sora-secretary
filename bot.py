@@ -25,6 +25,11 @@ from assistant_memory import (
     get_memory,
     export_memories_to_markdown,
     lint_memories,
+    create_todo,
+    list_todos,
+    get_todo,
+    complete_todo,
+    archive_todo,
 )
 from status_info import build_status_report
 
@@ -241,6 +246,13 @@ async def run_chat_flow(text: str) -> list[str]:
     is_forget = any(k in text for k in ["消して", "忘れて", "削除して", "無効化して"])
     is_daily = any(k in text for k in ["まとめて", "日報", "今日の作業"])
 
+    is_todo_add = any(k in text for k in ["ToDoに入れて", "をやることに追加", "todoに追加"])
+    is_todo_list = any(k in text for k in ["タスク一覧", "今日やること", "todo一覧"])
+
+    match_todo = re.search(r'todo_[a-zA-Z0-9_]+', text)
+    todo_id_in_text = match_todo.group(0) if match_todo else None
+    is_todo_done = any(k in text for k in ["完了", "終わった", "終えた"]) and todo_id_in_text is not None
+
     if is_export:
         limit = extract_limit(text, default=20, max_value=100)
         filepath, count = export_memories_to_markdown(limit=limit, memory_dir=MEMORY_DIR)
@@ -250,6 +262,40 @@ async def run_chat_flow(text: str) -> list[str]:
             f"✅ 最近の記憶（{count}件）をMarkdownに書き出しました。\n"
             f"**出力先**: `{filepath}`"
         ]
+
+    elif is_todo_done:
+        success = complete_todo(todo_id_in_text)
+        if success:
+            return [f"✅ タスク `{todo_id_in_text}` を完了にしました。お疲れ様でした！"]
+        else:
+            return [f"⚠️ 指定されたタスク `{todo_id_in_text}` は見つかりませんでした。"]
+
+    elif any(k in text for k in ["終わった", "完了"]) and not is_show and not is_search:
+        return ["💡 タスクを完了にする場合は、「todo_xxx を完了」のようにIDを含めて指示してください。\n（タスク一覧を確認するには「タスク一覧」と言ってください）"]
+
+    elif is_todo_list:
+        todos = list_todos(status="todo", limit=10)
+        doing = list_todos(status="doing", limit=5)
+        lines = ["📝 **現在のタスク**"]
+        if doing:
+            lines.append("\n▶️ **Doing (対応中)**:")
+            for t in doing:
+                lines.append(f"- **{t['title']}** (`{t['id']}`)")
+        if todos:
+            lines.append("\n✅ **ToDo (未完了)**:")
+            for t in todos:
+                lines.append(f"- **{t['title']}** (`{t['id']}`)")
+        if not todos and not doing:
+            lines.append("\n現在、対応中のタスクや未完了のタスクはありません。")
+        return split_message("\n".join(lines))
+
+    elif is_todo_add:
+        title = text.replace("これToDoに入れて", "").replace("をやることに追加", "").replace("todoに追加", "").strip()
+        if not title:
+            title = "新しいタスク"
+        title = title[:50]
+        todo_id = create_todo(title=title, body=text)
+        return [f"✅ 以下のタスクをToDoに追加しました。\n**ID**: `{todo_id}`\n**Title**: {title}"]
 
     elif is_show:
         if mem_id:
@@ -416,18 +462,18 @@ async def ask(interaction: discord.Interaction, question: str) -> None:
 
 @client.tree.command(name="remember", description="指定された内容を記憶します")
 @app_commands.describe(
-    title="記憶のタイトル", 
-    body="記憶する本文", 
-    tags="カンマ区切りのタグ (任意)", 
-    memory_type="記憶の種別 (任意)", 
+    title="記憶のタイトル",
+    body="記憶する本文",
+    tags="カンマ区切りのタグ (任意)",
+    memory_type="記憶の種別 (任意)",
     sensitivity="秘匿性 (任意)"
 )
 async def remember(
-    interaction: discord.Interaction, 
-    title: str, 
-    body: str, 
-    tags: str = "", 
-    memory_type: str = "conversation_note", 
+    interaction: discord.Interaction,
+    title: str,
+    body: str,
+    tags: str = "",
+    memory_type: str = "conversation_note",
     sensitivity: str = "normal"
 ) -> None:
     print(f"/remember from user_id={interaction.user.id}: title={title}", flush=True)
@@ -438,10 +484,10 @@ async def remember(
     await interaction.response.defer(thinking=True)
     try:
         mem_id = remember_memory(
-            title=title, 
-            body=body, 
-            tags=tags, 
-            memory_type=memory_type, 
+            title=title,
+            body=body,
+            tags=tags,
+            memory_type=memory_type,
             sensitivity=sensitivity
         )
         msg = (
@@ -474,7 +520,7 @@ async def search(interaction: discord.Interaction, query: str) -> None:
         lines = [f"🔍 **検索結果** (上位{len(results)}件):"]
         for r in results:
             lines.append(f"- **{r['title']}** (`{r['id']}`) [{r['created_at']}]\n  Tags: {r['tags']}\n  {r['summary']}...")
-        
+
         msg = "\n".join(lines)
         for chunk in split_message(msg):
             await interaction.followup.send(chunk)
@@ -538,14 +584,14 @@ async def daily_cmd(interaction: discord.Interaction, text: str) -> None:
         )
         title = "日報: " + text[:20].replace("\n", " ") + ("..." if len(text) > 20 else "")
         mem_id = remember_memory(
-            title=title, 
-            body=answer, 
-            tags="daily_report", 
-            memory_type="daily_report", 
+            title=title,
+            body=answer,
+            tags="daily_report",
+            memory_type="daily_report",
             sensitivity="normal"
         )
         out_msg = f"✅ 日報を作成し、記憶しました (ID: `{mem_id}`).\n\n{answer}"
-        
+
         combined = text + "\n" + answer
         candidate_msg = ""
         if detect_memory_candidate(combined):
@@ -553,7 +599,7 @@ async def daily_cmd(interaction: discord.Interaction, text: str) -> None:
             body_suggestion = text.replace('\n', ' ').replace('`', '').replace('"', '\\"')
             if len(body_suggestion) > 100:
                 body_suggestion = body_suggestion[:100] + "..."
-            
+
             candidate_msg = (
                 "\n\n💡 **個別記憶（決定事項など）の候補**\n"
                 "この日報には重要な決定や方針が含まれている可能性があります。\n"
@@ -567,7 +613,7 @@ async def daily_cmd(interaction: discord.Interaction, text: str) -> None:
                 chunks[-1] += candidate_msg
             else:
                 chunks.append(candidate_msg)
-                
+
         for chunk in chunks:
             await interaction.followup.send(chunk)
     except Exception as exc:
@@ -643,11 +689,11 @@ async def export_memory_cmd(interaction: discord.Interaction, limit: int = 20) -
     await interaction.response.defer(thinking=True)
     try:
         filepath, count = export_memories_to_markdown(limit=limit, memory_dir=MEMORY_DIR)
-        
+
         if count == 0:
             await interaction.followup.send("エクスポートする記憶がありません。")
             return
-            
+
         await interaction.followup.send(f"✅ {count}件の記憶をMarkdownにエクスポートしました。\n**出力先**: `{filepath}`")
     except Exception as exc:
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
@@ -665,6 +711,97 @@ async def status_cmd(interaction: discord.Interaction) -> None:
         report = await build_status_report()
         chunks = split_message(report)
         for chunk in chunks:
+            await interaction.followup.send(chunk)
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+
+@client.tree.command(name="todo_add", description="新しいToDoを追加します")
+@app_commands.describe(title="タスクのタイトル", body="詳細", due="期限(任意)", priority="優先度(low/normal/high)")
+async def todo_add_cmd(interaction: discord.Interaction, title: str, body: str = "", due: str = None, priority: str = "normal") -> None:
+    print(f"/todo_add from user_id={interaction.user.id}: title={title}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        todo_id = create_todo(title=title, body=body, priority=priority, due_at=due)
+        await interaction.followup.send(f"✅ ToDoを追加しました。\n**ID**: `{todo_id}`\n**Title**: {title}\n**Priority**: {priority}")
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+@client.tree.command(name="todo_list", description="ToDo一覧を表示します")
+@app_commands.describe(status="絞り込むステータス(todo/doing/done)")
+async def todo_list_cmd(interaction: discord.Interaction, status: str = None) -> None:
+    print(f"/todo_list from user_id={interaction.user.id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        todos = list_todos(status=status, limit=20)
+        if not todos:
+            await interaction.followup.send("タスクはありません。")
+            return
+
+        lines = [f"📝 **ToDo一覧** {f'({status})' if status else ''}"]
+        for t in todos:
+            lines.append(f"- **{t['title']}** (`{t['id']}`) [{t['status']}]")
+
+        msg = "\n".join(lines)
+        for chunk in split_message(msg):
+            await interaction.followup.send(chunk)
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+@client.tree.command(name="todo_done", description="指定したToDoを完了にします")
+@app_commands.describe(todo_id="完了にするToDoのID")
+async def todo_done_cmd(interaction: discord.Interaction, todo_id: str) -> None:
+    print(f"/todo_done from user_id={interaction.user.id}: {todo_id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        success = complete_todo(todo_id)
+        if success:
+            await interaction.followup.send(f"✅ タスク `{todo_id}` を完了にしました。お疲れ様でした！")
+        else:
+            await interaction.followup.send(f"⚠️ タスク `{todo_id}` は見つかりませんでした。")
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+@client.tree.command(name="todo_show", description="指定したToDoの詳細を表示します")
+@app_commands.describe(todo_id="表示するToDoのID")
+async def todo_show_cmd(interaction: discord.Interaction, todo_id: str) -> None:
+    print(f"/todo_show from user_id={interaction.user.id}: {todo_id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        t = get_todo(todo_id)
+        if not t:
+            await interaction.followup.send(f"⚠️ タスク `{todo_id}` は見つかりませんでした。")
+            return
+
+        lines = [
+            f"📄 **ToDo詳細** (`{t['id']}`)",
+            f"**Title**: {t['title']}",
+            f"**Status**: {t['status']}",
+            f"**Priority**: {t['priority']}",
+            f"**Due At**: {t['due_at']}",
+            f"**Created At**: {t['created_at']}",
+            f"**Completed At**: {t['completed_at']}",
+            f"",
+            f"**Body**:\n{t['body']}"
+        ]
+        msg = "\n".join(lines)
+        for chunk in split_message(msg):
             await interaction.followup.send(chunk)
     except Exception as exc:
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
@@ -768,7 +905,7 @@ async def context_remember(interaction: discord.Interaction, message: discord.Me
 
         if is_sensitive(content):
             await interaction.followup.send(
-                "⚠️ 個人情報や機密性の高い単語（パスワード、トークン、秘密鍵など）が含まれている可能性があるため、記憶できません。", 
+                "⚠️ 個人情報や機密性の高い単語（パスワード、トークン、秘密鍵など）が含まれている可能性があるため、記憶できません。",
                 ephemeral=True
             )
             return
@@ -880,4 +1017,5 @@ async def context_summarize(interaction: discord.Interaction, message: discord.M
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`", ephemeral=True)
 
 
-client.run(DISCORD_BOT_TOKEN)
+if __name__ == '__main__':
+    client.run(DISCORD_BOT_TOKEN)

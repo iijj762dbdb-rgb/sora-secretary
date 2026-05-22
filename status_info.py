@@ -11,7 +11,7 @@ from config import (
     SUMMARY_MODEL,
     ENABLE_MESSAGE_CONTENT_INTENT,
 )
-from assistant_memory import get_memory_stats
+from assistant_memory import get_memory_stats, get_todo_stats
 
 
 
@@ -153,6 +153,7 @@ async def build_status_report() -> str:
     try:
         if os.path.exists(ASSISTANT_MEMORY_DB):
             stats = get_memory_stats()
+            todo_stats = get_todo_stats()
             latest = stats.get("latest_memory")
             if latest:
                 latest_str = f"`{latest['created_at']}` | `{latest['memory_type']}` | **{latest['title']}**"
@@ -160,23 +161,23 @@ async def build_status_report() -> str:
                 latest_str = "なし"
 
             db_info = (
-                f"**3. 記憶データベース (assistant_memory.db)**\n"
+                f"**3. データベース (assistant_memory.db)**\n"
                 f"- パス: `{ASSISTANT_MEMORY_DB}`\n"
                 f"- 存在: 🟢 あり\n"
-                f"- 総記憶数: `{stats['total_count']}` 件\n"
-                f"- 有効 (archived=0): `{stats['active_count']}` 件\n"
-                f"- 無効 (archived=1): `{stats['archived_count']}` 件\n"
-                f"- 最新の記憶: {latest_str}"
+                f"- **[Memory]** 総数: `{stats['total_count']}` / 有効: `{stats['active_count']}` / 無効: `{stats['archived_count']}`\n"
+                f"- **[Memory]** 最新: {latest_str}\n"
+                f"- **[ToDo]** todo: `{todo_stats.get('todo', 0)}` / doing: `{todo_stats.get('doing', 0)}` / done: `{todo_stats.get('done', 0)}`\n"
+                f"- **[ToDo]** 期限切れ: `{todo_stats.get('expired', 0)}`"
             )
         else:
             db_info = (
-                f"**3. 記憶データベース (assistant_memory.db)**\n"
+                f"**3. データベース (assistant_memory.db)**\n"
                 f"- パス: `{ASSISTANT_MEMORY_DB}`\n"
                 f"- 存在: ⚠️ なし (未作成)"
             )
     except Exception as e:
         db_info = (
-            f"**3. 記憶データベース (assistant_memory.db)**\n"
+            f"**3. データベース (assistant_memory.db)**\n"
             f"- パス: `{ASSISTANT_MEMORY_DB}`\n"
             f"- 状況: ⚠️ 読み取り失敗 ({type(e).__name__}: {e})"
         )
