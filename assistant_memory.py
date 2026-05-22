@@ -55,6 +55,22 @@ def init_db():
         );
         ''')
 
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS todos (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            body TEXT,
+            status TEXT NOT NULL DEFAULT 'todo',
+            priority TEXT NOT NULL DEFAULT 'normal',
+            due_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT,
+            source TEXT,
+            related_memory_id TEXT
+        );
+        ''')
+
         # FTS5 virtual table
         cursor.execute('''
         CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts
@@ -90,6 +106,14 @@ def init_db():
 def _now_str() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
+def _table_exists(cursor, table_name: str) -> bool:
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+        (table_name,),
+    )
+    return cursor.fetchone() is not None
+
 def remember_memory(title: str, body: str, tags: str = "", memory_type: str = "conversation_note", sensitivity: str = "normal") -> str:
     conn = _get_conn()
     try:
@@ -115,7 +139,7 @@ def search_memories(query: str, limit: int = 5) -> list[dict]:
 
         # Using FTS5
         sql = '''
-        SELECT m.id, m.title, m.summary, m.tags, m.created_at
+        SELECT m.id, m.title, m.summary, m.tags, m.memory_type, m.created_at
         FROM memories m
         JOIN memories_fts f ON m.rowid = f.rowid
         WHERE memories_fts MATCH ? AND m.archived = 0
@@ -135,7 +159,7 @@ def search_memories(query: str, limit: int = 5) -> list[dict]:
             # Fallback to LIKE if FTS fails (e.g. malformed query)
             like_query = f"%{query}%"
             fallback_sql = '''
-            SELECT id, title, summary, tags, created_at
+            SELECT id, title, summary, tags, memory_type, created_at
             FROM memories
             WHERE archived = 0 AND (title LIKE ? OR summary LIKE ? OR body LIKE ? OR tags LIKE ?)
             ORDER BY created_at DESC
@@ -153,7 +177,7 @@ def get_recent_memories(limit: int = 10) -> list[dict]:
     try:
         cursor = conn.cursor()
         sql = '''
-        SELECT id, title, summary, tags, created_at
+        SELECT id, title, summary, tags, memory_type, created_at
         FROM memories
         WHERE archived = 0
         ORDER BY created_at DESC
@@ -205,7 +229,31 @@ def list_pending_reminders(limit: int = 50) -> list[dict]:
     conn = _get_conn()
     try:
         cursor = conn.cursor()
+        if not _table_exists(cursor, "reminders"):
+            return []
         cursor.execute("SELECT * FROM reminders WHERE status = 'pending' ORDER BY remind_at ASC LIMIT ?", (limit,))
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def list_reminders(status: str = "pending", limit: int = 50) -> list[dict]:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        if not _table_exists(cursor, "reminders"):
+            return []
+
+        if status == "all":
+            cursor.execute(
+                "SELECT * FROM reminders ORDER BY remind_at ASC LIMIT ?",
+                (limit,),
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM reminders WHERE status = ? ORDER BY remind_at ASC LIMIT ?",
+                (status, limit),
+            )
         return [dict(r) for r in cursor.fetchall()]
     finally:
         conn.close()
@@ -317,6 +365,8 @@ def list_todos(status: str = None, limit: int = 50) -> list[dict]:
     conn = _get_conn()
     try:
         cursor = conn.cursor()
+        if not _table_exists(cursor, "todos"):
+            return []
         if status:
             cursor.execute("SELECT * FROM todos WHERE status = ? ORDER BY created_at DESC LIMIT ?", (status, limit))
         else:
@@ -325,10 +375,39 @@ def list_todos(status: str = None, limit: int = 50) -> list[dict]:
     finally:
         conn.close()
 
+
+def list_todos_for_api(status: str = "active", limit: int = 50) -> list[dict]:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        if not _table_exists(cursor, "todos"):
+            return []
+
+        if status == "all":
+            cursor.execute(
+                "SELECT * FROM todos WHERE status IN ('todo', 'doing', 'done') ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            )
+        elif status == "active":
+            cursor.execute(
+                "SELECT * FROM todos WHERE status IN ('todo', 'doing') ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM todos WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+                (status, limit),
+            )
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
 def get_todo(todo_id: str) -> dict | None:
     conn = _get_conn()
     try:
         cursor = conn.cursor()
+        if not _table_exists(cursor, "todos"):
+            return None
         cursor.execute("SELECT * FROM todos WHERE id = ? AND status != 'archived'", (todo_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
@@ -361,9 +440,7 @@ def get_todo_stats() -> dict:
     conn = _get_conn()
     try:
         cursor = conn.cursor()
-        # Ensure table exists in case init_db hasn't run yet in some flows
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='todos'")
-        if not cursor.fetchone():
+        if not _table_exists(cursor, "todos"):
             return {"todo": 0, "doing": 0, "done": 0, "archived": 0, "expired": 0}
 
         cursor.execute("SELECT status, COUNT(*) FROM todos GROUP BY status")
@@ -380,6 +457,8 @@ def get_todo_stats() -> dict:
         return stats
     finally:
         conn.close()
+
+
 def get_memory_stats() -> dict:
     conn = _get_conn()
     try:
@@ -408,6 +487,25 @@ def get_memory_stats() -> dict:
             "archived_count": archived_count,
             "latest_memory": latest_memory
         }
+    finally:
+        conn.close()
+
+
+def list_memories_by_type(memory_type: str, limit: int = 20) -> list[dict]:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, title, summary, body, tags, memory_type, created_at, updated_at
+            FROM memories
+            WHERE archived = 0 AND memory_type = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (memory_type, limit),
+        )
+        return [dict(r) for r in cursor.fetchall()]
     finally:
         conn.close()
 
@@ -473,5 +571,3 @@ def lint_memories() -> dict:
         }
     finally:
         conn.close()
-
-

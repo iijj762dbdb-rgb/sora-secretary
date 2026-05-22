@@ -16,6 +16,7 @@ from config import (
     MESSAGE_CONTENT_ALLOWED_CHANNEL_IDS,
     ASSISTANT_NAME,
     ASSISTANT_PERSONA,
+    validate_bot_config,
 )
 from ollama_client import ask_ollama
 from assistant_memory import (
@@ -1230,4 +1231,5 @@ async def execute_briefing() -> str:
 
 
 if __name__ == '__main__':
+    validate_bot_config()
     client.run(DISCORD_BOT_TOKEN)

@@ -24,8 +24,14 @@
   * 朝や夜の決まったタイミング（またはトリガーメッセージ）で、本日の予定ややり残したことのサマリーを提示する。（※今回は自動通知ではなく手動 /briefing として実装済）
 - [ ] **Kindle / 新刊 / ニュース監視**:
   * 登録した新刊情報や外部ニュースなどを定期取得し、要約して通知する。
-- [ ] **専用UI / PWA**:
-  * Discord以外からも手軽に記憶の確認や対話ができる専用のWeb画面・PWA。
+- [x] **専用UI / PWA (モック実装完了)**:
+  * Discord以外からも手軽に記憶の確認や対話ができる専用のWeb画面のモック（`aster-ui`）を実装済。
+- [x] **UI用 read-only FastAPI Gateway (UI-1)**:
+  * `api_server.py` を追加し、`aster-ui` から `status` / `memories` / `todos` / `reminders` / `daily reports` を読むためのローカル read-only API を実装済。
+  * Discord Bot 本体とは別プロセスで動作し、`127.0.0.1:8787` bind を前提とする。
+- [ ] **専用UIの実データ接続 (次フェーズ)**:
+  * `aster-ui` を SORA Secretary のバックエンド（まずは read-only API、その後 Ollama / 書き込み系 API）と通信させ、実際に機能するUIとして統合する。
+  * 実装計画の詳細は `docs/ui-next-implementation-plan.md` を参照。
 
 ## 将来的な検討・構想タスク
 - [ ] **MESSAGE_CONTENT_FREE_CHAT_CHANNEL_IDS の導入**:

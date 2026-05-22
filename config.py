@@ -26,12 +26,6 @@ for value in _raw_allowed_ids.split(","):
         )
     ALLOWED_DISCORD_USER_IDS.add(int(value))
 
-if not DISCORD_BOT_TOKEN:
-    raise RuntimeError("DISCORD_BOT_TOKEN is not set")
-
-if not ALLOWED_DISCORD_USER_IDS:
-    raise RuntimeError("ALLOWED_DISCORD_USER_IDS is not set")
-
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID", "")
 DISCORD_GUILD_ID_INT = int(DISCORD_GUILD_ID) if DISCORD_GUILD_ID.strip().isdigit() else None
 
@@ -53,3 +47,11 @@ for value in _raw_channel_ids.split(","):
 
 ASSISTANT_NAME = os.getenv("ASSISTANT_NAME", "SORA Secretary")
 ASSISTANT_PERSONA = os.getenv("ASSISTANT_PERSONA", "calm_secretary")
+
+
+def validate_bot_config() -> None:
+    if not DISCORD_BOT_TOKEN:
+        raise RuntimeError("DISCORD_BOT_TOKEN is not set")
+
+    if not ALLOWED_DISCORD_USER_IDS:
+        raise RuntimeError("ALLOWED_DISCORD_USER_IDS is not set")

@@ -15,6 +15,8 @@
 - [x] Message Content Intent の env gated 導入と on_message 処理実装
 - [x] 簡易人格（落ち着いた個人秘書: SORA Secretary）の system prompt 実装
 - [x] 自然文ルーティングの共通関数化（run_chat_flow）
+- [x] 専用UIフロントエンド (`aster-ui`) のReact/Viteベースでのモック実装・コンポーネント化
+- [x] `aster-ui` 向け read-only FastAPI Gateway (`api_server.py`) の最小実装（UI-1）
 
 ## 次のステップ
 - [x] `assistant_memory.db` の構築
@@ -27,5 +29,5 @@
 - Phase 2-A: ToDo / next_action の最小実装 (todos テーブル、スラッシュコマンド、自然文ルーティング)
 - Phase 2-B: reminder 最小版の実装 (reminders テーブル、バックグラウンドループ通知、スラッシュコマンド)
 - Phase 2-C: Daily Briefing MVP (手動呼び出し版 /briefing)
+- Phase UI-1: Web UI 向け read-only API (`/api/status`, `/api/memories/*`, `/api/todos`, `/api/reminders`, `/api/daily-reports`)
 - [ ] 将来の `/code` やコード相談入口で `CODE_MODEL` を実利用するか検討する
-

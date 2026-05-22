@@ -15,3 +15,5 @@
 
 ## read-only 優先
 - システム監視コマンド **`/status`**、記憶データベースの点検コマンド **`/memory_lint`**、および将来的な Document Inbox 連携においては、データベースの書き込み・変更や他プロセスの起動・停止等の破壊的アクションを一切持たない **完全な読み取り専用 (read-only) 状態取得** として実装し、高い安全性を確保します。自動アーカイブや自動削除・変更等の自動修正も一切行いません。
+- `aster-ui` 向けの UI API Gateway (`api_server.py`) も同様に read-only 専用で実装し、初期フェーズでは GET API のみを提供します。
+- UI API Gateway は `127.0.0.1` bind のローカル利用を前提とし、Document Inbox 接続、書き込み系 API、shell 実行、systemd 操作、外部API実行は含めません。
