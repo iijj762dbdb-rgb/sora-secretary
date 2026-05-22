@@ -42,18 +42,16 @@ def init_db():
         ''')
 
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS todos (
+        CREATE TABLE IF NOT EXISTS reminders (
             id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            body TEXT,
-            status TEXT DEFAULT 'todo',
-            priority TEXT DEFAULT 'normal',
-            due_at TEXT,
+            text TEXT NOT NULL,
+            remind_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            completed_at TEXT,
+            sent_at TEXT,
             source TEXT,
-            related_memory_id TEXT
+            related_todo_id TEXT
         );
         ''')
 
@@ -187,6 +185,80 @@ def get_memory(memory_id: str) -> dict | None:
     finally:
         conn.close()
 
+def create_reminder(text: str, remind_at: str, source: str = None, related_todo_id: str = None) -> str:
+    conn = _get_conn()
+    try:
+        remind_id = f"rem_{datetime.now().strftime('%Y%m%d')}_{uuid.uuid4().hex[:8]}"
+        now = _now_str()
+        cursor = conn.cursor()
+        cursor.execute('''
+        INSERT INTO reminders (
+            id, text, remind_at, status, created_at, updated_at, source, related_todo_id
+        ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
+        ''', (remind_id, text, remind_at, now, now, source, related_todo_id))
+        conn.commit()
+        return remind_id
+    finally:
+        conn.close()
+
+def list_pending_reminders(limit: int = 50) -> list[dict]:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM reminders WHERE status = 'pending' ORDER BY remind_at ASC LIMIT ?", (limit,))
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def list_due_reminders(current_time: str) -> list[dict]:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM reminders WHERE status = 'pending' AND remind_at <= ? ORDER BY remind_at ASC", (current_time,))
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def mark_reminder_sent(remind_id: str) -> bool:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        now = _now_str()
+        cursor.execute("UPDATE reminders SET status = 'sent', updated_at = ?, sent_at = ? WHERE id = ?", (now, now, remind_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+def cancel_reminder(remind_id: str) -> bool:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        now = _now_str()
+        cursor.execute("UPDATE reminders SET status = 'cancelled', updated_at = ? WHERE id = ?", (now, remind_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+def get_reminder_stats() -> dict:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='reminders'")
+        if not cursor.fetchone():
+            return {"pending": 0, "sent": 0, "cancelled": 0}
+
+        cursor.execute("SELECT status, COUNT(*) FROM reminders GROUP BY status")
+        rows = cursor.fetchall()
+        stats = {"pending": 0, "sent": 0, "cancelled": 0}
+        for r in rows:
+            if r[0] in stats:
+                stats[r[0]] = r[1]
+        return stats
+    finally:
+        conn.close()
+
 def export_memories_to_markdown(limit: int, memory_dir: str) -> tuple[str, int]:
     conn = _get_conn()
     try:
@@ -308,7 +380,6 @@ def get_todo_stats() -> dict:
         return stats
     finally:
         conn.close()
-
 def get_memory_stats() -> dict:
     conn = _get_conn()
     try:

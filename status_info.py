@@ -11,7 +11,7 @@ from config import (
     SUMMARY_MODEL,
     ENABLE_MESSAGE_CONTENT_INTENT,
 )
-from assistant_memory import get_memory_stats, get_todo_stats
+from assistant_memory import get_memory_stats, get_todo_stats, get_reminder_stats
 
 
 
@@ -154,6 +154,7 @@ async def build_status_report() -> str:
         if os.path.exists(ASSISTANT_MEMORY_DB):
             stats = get_memory_stats()
             todo_stats = get_todo_stats()
+            rem_stats = get_reminder_stats()
             latest = stats.get("latest_memory")
             if latest:
                 latest_str = f"`{latest['created_at']}` | `{latest['memory_type']}` | **{latest['title']}**"
@@ -167,7 +168,8 @@ async def build_status_report() -> str:
                 f"- **[Memory]** 総数: `{stats['total_count']}` / 有効: `{stats['active_count']}` / 無効: `{stats['archived_count']}`\n"
                 f"- **[Memory]** 最新: {latest_str}\n"
                 f"- **[ToDo]** todo: `{todo_stats.get('todo', 0)}` / doing: `{todo_stats.get('doing', 0)}` / done: `{todo_stats.get('done', 0)}`\n"
-                f"- **[ToDo]** 期限切れ: `{todo_stats.get('expired', 0)}`"
+                f"- **[ToDo]** 期限切れ: `{todo_stats.get('expired', 0)}`\n"
+                f"- **[Reminder]** pending: `{rem_stats.get('pending', 0)}` / sent: `{rem_stats.get('sent', 0)}` / cancelled: `{rem_stats.get('cancelled', 0)}`"
             )
         else:
             db_info = (

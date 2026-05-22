@@ -1,5 +1,6 @@
 import discord
 from discord import app_commands
+from discord.ext import tasks
 import re
 
 from config import (
@@ -30,6 +31,11 @@ from assistant_memory import (
     get_todo,
     complete_todo,
     archive_todo,
+    create_reminder,
+    list_pending_reminders,
+    list_due_reminders,
+    mark_reminder_sent,
+    cancel_reminder,
 )
 from status_info import build_status_report
 
@@ -63,6 +69,38 @@ class SoraSecretary(discord.Client):
         else:
             await self.tree.sync()
             print("Slash commands synced globally.", flush=True)
+
+        self.reminder_loop.start()
+
+    @tasks.loop(seconds=60.0)
+    async def reminder_loop(self) -> None:
+        try:
+            from datetime import datetime
+            now_iso = datetime.now().isoformat()
+            due_reminders = list_due_reminders(now_iso)
+            for r in due_reminders:
+                if not ALLOWED_DISCORD_USER_IDS:
+                    break
+                user_id = list(ALLOWED_DISCORD_USER_IDS)[0]
+                user = self.get_user(user_id)
+                if user is None:
+                    try:
+                        user = await self.fetch_user(user_id)
+                    except:
+                        pass
+
+                if user:
+                    msg = f"⏰ **Reminder**\n{r['text']}"
+                    await user.send(msg)
+                    mark_reminder_sent(r['id'])
+                else:
+                    print(f"Failed to find user {user_id} for reminder {r['id']}")
+        except Exception as e:
+            print(f"Error in reminder loop: {e}")
+
+    @reminder_loop.before_loop
+    async def before_reminder_loop(self):
+        await self.wait_until_ready()
 
     async def on_ready(self) -> None:
         init_db()
@@ -249,6 +287,8 @@ async def run_chat_flow(text: str) -> list[str]:
     is_todo_add = any(k in text for k in ["ToDoに入れて", "をやることに追加", "todoに追加"])
     is_todo_list = any(k in text for k in ["タスク一覧", "今日やること", "todo一覧"])
 
+    is_remind = any(k in text for k in ["リマインドして", "あとで通知して", "remind me"])
+
     match_todo = re.search(r'todo_[a-zA-Z0-9_]+', text)
     todo_id_in_text = match_todo.group(0) if match_todo else None
     is_todo_done = any(k in text for k in ["完了", "終わった", "終えた"]) and todo_id_in_text is not None
@@ -262,6 +302,27 @@ async def run_chat_flow(text: str) -> list[str]:
             f"✅ 最近の記憶（{count}件）をMarkdownに書き出しました。\n"
             f"**出力先**: `{filepath}`"
         ]
+
+    elif is_remind:
+        match = re.search(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?[+-]\d{2}:\d{2}', text)
+        if match:
+            original_time_str = match.group(0)
+            remind_at = original_time_str
+
+            if remind_at.count(':') == 2:
+                tz_idx = remind_at.find('+', 10)
+                if tz_idx == -1:
+                    tz_idx = remind_at.find('-', 10)
+                if tz_idx != -1:
+                    remind_at = remind_at[:tz_idx] + ':00' + remind_at[tz_idx:]
+
+            remind_text = text.replace(original_time_str, "").replace("リマインドして", "").replace("あとで通知して", "").replace("remind me", "").strip()
+            if not remind_text:
+                remind_text = "リマインダー"
+            rem_id = create_reminder(text=remind_text, remind_at=remind_at)
+            return [f"✅ 以下のリマインダーを追加しました。\n**ID**: `{rem_id}`\n**Time**: `{remind_at}`\n**Text**: {remind_text}"]
+        else:
+            return ["⚠️ リマインダーを追加するには、日時の指定が必要です (例: `2026-05-20T21:00:00+09:00`)。\nコマンド `/remind_add` を使用することもできます。"]
 
     elif is_todo_done:
         success = complete_todo(todo_id_in_text)
@@ -803,6 +864,82 @@ async def todo_show_cmd(interaction: discord.Interaction, todo_id: str) -> None:
         msg = "\n".join(lines)
         for chunk in split_message(msg):
             await interaction.followup.send(chunk)
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+
+@client.tree.command(name="remind_add", description="新しいリマインダーを追加します")
+@app_commands.describe(text="通知する内容", remind_at="日時 (ISO8601形式: 例 2026-05-20T21:00:00+09:00)")
+async def remind_add_cmd(interaction: discord.Interaction, text: str, remind_at: str) -> None:
+    print(f"/remind_add from user_id={interaction.user.id}: {text}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        rem_id = create_reminder(text=text, remind_at=remind_at)
+        await interaction.followup.send(f"✅ リマインダーを追加しました。\n**ID**: `{rem_id}`\n**Time**: `{remind_at}`\n**Text**: {text}")
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+@client.tree.command(name="remind_list", description="待機中のリマインダー一覧を表示します")
+async def remind_list_cmd(interaction: discord.Interaction) -> None:
+    print(f"/remind_list from user_id={interaction.user.id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        reminders = list_pending_reminders(limit=20)
+        if not reminders:
+            await interaction.followup.send("待機中のリマインダーはありません。")
+            return
+
+        lines = ["⏰ **Pending Reminders**"]
+        for r in reminders:
+            lines.append(f"• [`{r['id']}`] {r['text']}\n  at: {r['remind_at']}")
+
+        msg = "\n".join(lines)
+        for chunk in split_message(msg):
+            await interaction.followup.send(chunk)
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+@client.tree.command(name="remind_done", description="リマインダーを完了(sent)状態にします")
+@app_commands.describe(remind_id="対象のID")
+async def remind_done_cmd(interaction: discord.Interaction, remind_id: str) -> None:
+    print(f"/remind_done from user_id={interaction.user.id}: {remind_id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        success = mark_reminder_sent(remind_id)
+        if success:
+            await interaction.followup.send(f"✅ リマインダー `{remind_id}` を sent 状態にしました。")
+        else:
+            await interaction.followup.send(f"⚠️ リマインダー `{remind_id}` は見つかりませんでした。")
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+@client.tree.command(name="remind_cancel", description="リマインダーをキャンセル状態にします")
+@app_commands.describe(remind_id="対象のID")
+async def remind_cancel_cmd(interaction: discord.Interaction, remind_id: str) -> None:
+    print(f"/remind_cancel from user_id={interaction.user.id}: {remind_id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        success = cancel_reminder(remind_id)
+        if success:
+            await interaction.followup.send(f"✅ リマインダー `{remind_id}` をキャンセルしました。")
+        else:
+            await interaction.followup.send(f"⚠️ リマインダー `{remind_id}` は見つかりませんでした。")
     except Exception as exc:
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
 
