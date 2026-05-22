@@ -8,6 +8,7 @@ from config import (
     ALLOWED_DISCORD_USER_IDS,
     OLLAMA_BASE_URL,
     DEFAULT_MODEL,
+    SUMMARY_MODEL,
     DISCORD_GUILD_ID_INT,
     MEMORY_DIR,
     ENABLE_MESSAGE_CONTENT_INTENT,
@@ -288,6 +289,7 @@ async def run_chat_flow(text: str) -> list[str]:
     is_todo_list = any(k in text for k in ["タスク一覧", "今日やること", "todo一覧"])
 
     is_remind = any(k in text for k in ["リマインドして", "あとで通知して", "remind me"])
+    is_briefing = any(k in text for k in ["ブリーフィング", "朝のサマリー", "夜のサマリー", "今日の状況"])
 
     match_todo = re.search(r'todo_[a-zA-Z0-9_]+', text)
     todo_id_in_text = match_todo.group(0) if match_todo else None
@@ -302,6 +304,10 @@ async def run_chat_flow(text: str) -> list[str]:
             f"✅ 最近の記憶（{count}件）をMarkdownに書き出しました。\n"
             f"**出力先**: `{filepath}`"
         ]
+
+    elif is_briefing:
+        briefing_text = await execute_briefing()
+        return split_message(briefing_text)
 
     elif is_remind:
         match = re.search(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?[+-]\d{2}:\d{2}', text)
@@ -640,7 +646,7 @@ async def daily_cmd(interaction: discord.Interaction, text: str) -> None:
         print("Calling Ollama for /daily...", flush=True)
         answer = await ask_ollama(
             base_url=OLLAMA_BASE_URL,
-            model=DEFAULT_MODEL,
+            model=SUMMARY_MODEL,
             prompt=prompt,
         )
         title = "日報: " + text[:20].replace("\n", " ") + ("..." if len(text) > 20 else "")
@@ -863,6 +869,23 @@ async def todo_show_cmd(interaction: discord.Interaction, todo_id: str) -> None:
         ]
         msg = "\n".join(lines)
         for chunk in split_message(msg):
+            await interaction.followup.send(chunk)
+    except Exception as exc:
+        await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
+
+
+@client.tree.command(name="briefing", description="現在のタスク・記憶・リマインダーを元に今日の状況を整理します")
+async def briefing_cmd(interaction: discord.Interaction) -> None:
+    print(f"/briefing from user_id={interaction.user.id}", flush=True)
+    if not is_allowed(interaction.user.id):
+        await interaction.response.send_message("このBotを使う権限がありません。", ephemeral=True)
+        return
+
+    await interaction.response.defer(thinking=True)
+    try:
+        print("Calling Ollama for /briefing...", flush=True)
+        answer = await execute_briefing()
+        for chunk in split_message(answer):
             await interaction.followup.send(chunk)
     except Exception as exc:
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`")
@@ -1152,6 +1175,58 @@ async def context_summarize(interaction: discord.Interaction, message: discord.M
             await interaction.followup.send(chunk, ephemeral=True)
     except Exception as exc:
         await interaction.followup.send(f"エラーが発生しました: `{type(exc).__name__}: {exc}`", ephemeral=True)
+
+
+async def execute_briefing() -> str:
+    todos_doing = list_todos(status="doing", limit=5)
+    todos_todo = list_todos(status="todo", limit=5)
+    reminders = list_pending_reminders(limit=5)
+    memories = get_recent_memories(limit=3)
+
+    state_lines = []
+    state_lines.append("[現在のリマインダー (Pending)]")
+    for r in reminders:
+        state_lines.append(f"- {r['text']} (期限: {r['remind_at']})")
+    if not reminders:
+        state_lines.append("- なし")
+
+    state_lines.append("\n[進行中のタスク (Doing)]")
+    for t in todos_doing:
+        due = t.get('due_at') or '未定'
+        state_lines.append(f"- {t['title']} (期限: {due})")
+    if not todos_doing:
+        state_lines.append("- なし")
+
+    state_lines.append("\n[未着手のタスク (ToDo)]")
+    for t in todos_todo:
+        due = t.get('due_at') or '未定'
+        state_lines.append(f"- {t['title']} (期限: {due})")
+    if not todos_todo:
+        state_lines.append("- なし")
+
+    state_lines.append("\n[最近の記憶 (Memories)]")
+    for m in memories:
+        state_lines.append(f"- {m['title']}")
+    if not memories:
+        state_lines.append("- なし")
+
+    state_text = "\n".join(state_lines)
+
+    prompt = (
+        f"あなたは「{ASSISTANT_NAME}」という名前の秘書AIです。以下の現在の状況（タスク、リマインダー、記憶）を元に、"
+        "本日のブリーフィング（挨拶、今日の状況の要約、注意すべきタスクやリマインダーなど）を作成してください。\n"
+        "簡潔で丁寧な口調でお願いします。\n\n"
+        f"【現在の状況】\n{state_text}"
+    )
+
+    answer = await ask_ollama(
+        base_url=OLLAMA_BASE_URL,
+        model=SUMMARY_MODEL,
+        prompt=prompt,
+        system_prompt=ASSISTANT_PERSONA
+    )
+
+    return answer
 
 
 if __name__ == '__main__':

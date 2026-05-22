@@ -26,5 +26,6 @@
 - SORA実機で `/status` の用途別モデル表示、`/ask`、`/chat`、`/daily`、Context Menu「日報にする」「要約する」を確認する
 - Phase 2-A: ToDo / next_action の最小実装 (todos テーブル、スラッシュコマンド、自然文ルーティング)
 - Phase 2-B: reminder 最小版の実装 (reminders テーブル、バックグラウンドループ通知、スラッシュコマンド)
+- Phase 2-C: Daily Briefing MVP (手動呼び出し版 /briefing)
 - [ ] 将来の `/code` やコード相談入口で `CODE_MODEL` を実利用するか検討する
 
