@@ -32,7 +32,8 @@
 - [ ] **専用UIの実データ接続 (次フェーズ)**:
   * `aster-ui` を SORA Secretary のバックエンド（まずは read-only API、その後 Ollama / 書き込み系 API）と通信させ、実際に機能するUIとして統合する。
   * 実装計画の詳細は `docs/ui-next-implementation-plan.md` を参照。
-  * `StatusView` の `/api/status` 接続は完了。次の優先は `MemoryView` の read-only 接続。
+  * `StatusView` の `/api/status` 接続、および `MemoryView` の recent/search/detail 接続は完了。
+  * 次の優先は `DailyView` または `ToDo / Reminder` の read-only 接続。
 
 ## 将来的な検討・構想タスク
 - [ ] **MESSAGE_CONTENT_FREE_CHAT_CHANNEL_IDS の導入**:

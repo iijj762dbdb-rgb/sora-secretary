@@ -67,6 +67,7 @@
 ### 3. Memory / 記憶検索・閲覧・保存
 - 対象画面: `MemoryView`, `HomeView`
 - 目的: モックの Memory Stream を `assistant_memory.db` に接続する。
+- 現在地: **`MemoryView` は read-only API (`/api/memories/recent`, `/api/memories/search`, `/api/memories/{id}`) へ接続済み**。recent / search / detail、loading / error / empty、refresh を実装済み。
 - 対応内容:
   - 最近の記憶一覧 API を実装する。
   - 検索 API を FTS5 ベースで接続する。

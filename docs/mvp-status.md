@@ -18,6 +18,7 @@
 - [x] 専用UIフロントエンド (`aster-ui`) のReact/Viteベースでのモック実装・コンポーネント化
 - [x] `aster-ui` 向け read-only FastAPI Gateway (`api_server.py`) の最小実装（UI-1）
 - [x] `aster-ui` の `StatusView` を `/api/status` に接続し、実データの read-only 表示・refresh・loading/error handling を実装
+- [x] `aster-ui` の `MemoryView` を memories read-only API に接続し、recent / search / detail と loading/error/empty を実装
 
 ## 次のステップ
 - [x] `assistant_memory.db` の構築
