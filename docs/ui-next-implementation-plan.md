@@ -118,6 +118,7 @@
 ### 7. Status / 運用監視
 - 対象画面: `StatusView`
 - 目的: モックのシステム状態カードを `status_info.py` に接続する。
+- 現在地: **`StatusView` は UI API (`GET /api/status`) へ接続済み**。loading / error 表示と refresh button を実装済み。
 - 対応内容:
   - Bot 状態、Ollama、DB、Git、systemd、ログ情報を API 化する。
   - カードUIと実データの項目対応を定義する。
