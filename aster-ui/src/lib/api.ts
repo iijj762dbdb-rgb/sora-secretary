@@ -24,6 +24,39 @@ interface MemoryDetailResponse {
   item: MemoryItem;
 }
 
+export interface TodoItem {
+  id: string;
+  text: string;
+  status: "todo" | "doing" | "done" | string;
+  priority?: string | null;
+  due_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface ReminderItem {
+  id: string;
+  text: string;
+  remind_at: string;
+  status: "pending" | "sent" | "cancelled" | string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  sent_at?: string | null;
+  source?: string | null;
+  related_todo_id?: string | null;
+}
+
+export interface TodosResponse {
+  status: string;
+  items: TodoItem[];
+}
+
+export interface RemindersResponse {
+  status: string;
+  items: ReminderItem[];
+}
+
 const API_BASE = "http://127.0.0.1:8787";
 
 export async function fetchStatus(): Promise<StatusResponse> {
@@ -89,4 +122,36 @@ export async function fetchMemoryDetail(memoryId: string): Promise<MemoryItem> {
   }
 
   return payload.item;
+}
+
+
+export async function fetchTodos(status = "all"): Promise<TodosResponse> {
+  const response = await fetch(`${API_BASE}/api/todos?status=${encodeURIComponent(status)}`);
+
+  if (!response.ok) {
+    throw new Error(`todos fetch failed (${response.status})`);
+  }
+
+  const payload = (await response.json()) as TodosResponse;
+  if (payload.status !== "ok") {
+    throw new Error("SORA API returned a non-ok status");
+  }
+
+  return payload;
+}
+
+
+export async function fetchReminders(status = "pending"): Promise<RemindersResponse> {
+  const response = await fetch(`${API_BASE}/api/reminders?status=${encodeURIComponent(status)}`);
+
+  if (!response.ok) {
+    throw new Error(`reminders fetch failed (${response.status})`);
+  }
+
+  const payload = (await response.json()) as RemindersResponse;
+  if (payload.status !== "ok") {
+    throw new Error("SORA API returned a non-ok status");
+  }
+
+  return payload;
 }

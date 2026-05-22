@@ -1,13 +1,13 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { Brain, CheckSquare, Layers, Sparkles } from "lucide-react";
+import { Brain, Layers, Sparkles } from "lucide-react";
 import { cls } from "../utils/formatting";
 import { AsterOrb } from "../components/aster/AsterOrb";
 import { ActionButton } from "../components/ui/ActionButton";
 import { CardBlock } from "../components/ui/CardBlock";
 import { MemoryRow } from "../components/ui/MemoryRow";
-import { WidgetCard } from "../components/ui/WidgetCard";
-import { commandActions, memories, personalWidgets } from "../data/mockData";
+import { TodoPanel } from "../components/ui/TodoPanel";
+import { commandActions, memories } from "../data/mockData";
 
 export function HomeView({ light, setActive, runAsterAction }: any) {
   return (
@@ -59,9 +59,7 @@ export function HomeView({ light, setActive, runAsterAction }: any) {
           {memories.slice(0, 3).map((memory) => <MemoryRow key={memory.title} memory={memory} light={light} />)}
         </CardBlock>
         <div className="xl:hidden">
-          <CardBlock title="Active Projects & Goals" light={light} icon={CheckSquare}>
-            {personalWidgets.map((widget) => <WidgetCard key={widget.title} widget={widget} light={light} />)}
-          </CardBlock>
+          <TodoPanel light={light} compact />
         </div>
       </section>
     </div>

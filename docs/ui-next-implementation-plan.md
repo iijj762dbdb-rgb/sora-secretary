@@ -94,6 +94,7 @@
 ### 5. ToDo / Next Action 管理
 - 対象画面: `HomeView`, `RightPanel` 付近に追加候補
 - 目的: 既に実装済みの ToDo 機能を UI 上で扱えるようにする。
+- 現在地: **`HomeView` / `RightPanel` に Active ToDo の read-only 表示を接続済み**。loading / error / empty、refresh を実装済み。
 - 対応内容:
   - ToDo 一覧 API を接続する。
   - ToDo 追加フォームを実装する。
@@ -107,6 +108,7 @@
 ### 6. Reminder / 通知管理
 - 対象画面: 新規セクション追加または `HomeView` / `RightPanel` 統合
 - 目的: 既存のリマインダー機能を確認・登録できるUIを用意する。
+- 現在地: **`RightPanel` に Pending Reminder の read-only 表示を接続済み**。loading / error / empty、refresh を実装済み。
 - 対応内容:
   - pending リマインダー一覧 API を接続する。
   - リマインダー登録フォームを実装する。
