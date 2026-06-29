@@ -30,6 +30,14 @@
 - `source_type`: 情報源の種別
 - `version`: 将来的な版管理
 
+## 長期記憶policy対応schema reset計画
+
+Aster / SORA Secretary の `assistant_memory.db` はまだ本運用していないため、既存データ保持migrationではなく、DBファイルのバックアップ後に長期記憶policy対応schemaへリセットする方針を採用できます。
+
+設計と手順は [assistant-memory-reset-schema-plan.md](assistant-memory-reset-schema-plan.md) を正本とします。実行時は必ず事前バックアップを作成し、`visibility`, `gpt_summary`, `confidence`, `review_at`, `redaction_status`, `export_allowed`, `supersedes_id`, `superseded_by_id` を含むschemaを `init_db()` とFTS triggerで一貫して作り直します。
+
+このresetはまだ実行しません。DB書き込み、migration、systemd変更、既存DB削除は別フェーズで、明示確認後に行います。
+
 ## 記憶の点検・整理方針 (Memory Lint / Review)
 長期的な運用においてデータベースの健全性と検索ノイズの低減を保つため、**`/memory_lint`** コマンドが用意されています。
 
@@ -42,4 +50,3 @@
 
 ## 将来の構想
 - OCRによる要約情報や、運用ログ要約等を参照IDつきで保存する仕組みを追加する可能性があります。
-
