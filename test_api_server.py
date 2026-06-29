@@ -34,6 +34,16 @@ def client(tmp_path, monkeypatch):
         tags="daily,test",
         memory_type="daily_report",
     )
+    exportable_id = remember_memory(
+        title="Exportable memory",
+        body="safe body for explicit detail",
+        tags="export,test",
+        memory_type="decision_trace",
+        visibility="gpt_safe",
+        gpt_summary="safe summary for GPT",
+        redaction_status="sanitized",
+        export_allowed=1,
+    )
 
     todo_id = create_todo(title="Ship UI-1", body="Read-only gateway", priority="high")
     done_todo_id = create_todo(title="Completed task", priority="normal")
@@ -65,6 +75,7 @@ def client(tmp_path, monkeypatch):
     return {
         "client": test_client,
         "memory_id": memory_id,
+        "exportable_id": exportable_id,
         "todo_id": todo_id,
         "pending_id": pending_id,
     }
@@ -90,6 +101,22 @@ def test_recent_memories(client):
     payload = response.json()
     assert payload["status"] == "ok"
     assert any(item["id"] == client["memory_id"] for item in payload["items"])
+    assert any("visibility" in item and "redaction_status" in item for item in payload["items"])
+
+
+def test_exportable_memories(client):
+    response = client["client"].get("/api/memories/exportable")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    ids = {item["id"] for item in payload["items"]}
+    assert client["exportable_id"] in ids
+    assert client["memory_id"] not in ids
+    item = next(item for item in payload["items"] if item["id"] == client["exportable_id"])
+    assert item["visibility"] == "gpt_safe"
+    assert item["redaction_status"] == "sanitized"
+    assert item["export_allowed"] == 1
+    assert item["sensitivity"] != "secret"
 
 
 def test_memory_not_found(client):

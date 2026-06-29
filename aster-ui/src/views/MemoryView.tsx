@@ -4,6 +4,7 @@ import { RefreshCw, Search, AlertTriangle, Brain } from "lucide-react";
 import { cls } from "../utils/formatting";
 import { MemoryCard } from "../components/ui/MemoryCard";
 import {
+  fetchExportableMemories,
   fetchMemoryDetail,
   fetchRecentMemories,
   searchMemories,
@@ -41,6 +42,7 @@ function formatDate(value?: string | null): string {
 
 export function MemoryView({ light }: MemoryViewProps) {
   const [viewMode, setViewMode] = useState<"grid" | "timeline">("grid");
+  const [listFilter, setListFilter] = useState<"recent" | "exportable">("recent");
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [items, setItems] = useState<MemoryItem[]>([]);
@@ -62,7 +64,9 @@ export function MemoryView({ light }: MemoryViewProps) {
       try {
         const payload = submittedQuery.trim()
           ? await searchMemories(submittedQuery.trim(), 20)
-          : await fetchRecentMemories(20);
+          : listFilter === "exportable"
+            ? await fetchExportableMemories(20)
+            : await fetchRecentMemories(20);
 
         if (cancelled) return;
 
@@ -98,7 +102,7 @@ export function MemoryView({ light }: MemoryViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [submittedQuery, refreshTick]);
+  }, [submittedQuery, listFilter, refreshTick]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -201,9 +205,31 @@ export function MemoryView({ light }: MemoryViewProps) {
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <div className="text-sm text-slate-400">
-                {submittedQuery ? `Search results for "${submittedQuery}"` : "Recent memories"}
+                {submittedQuery ? `Search results for "${submittedQuery}"` : listFilter === "exportable" ? "GPT-safe exportable memories" : "Recent memories"}
               </div>
               <div className="mt-1 text-xs text-slate-500">{items.length} items</div>
+            </div>
+            <div className={cls("flex gap-1 rounded-[1.5rem] border p-1", light ? "border-slate-200 bg-slate-50" : "border-white/10 bg-black/20")}>
+              <button
+                type="button"
+                onClick={() => {
+                  setSubmittedQuery("");
+                  setListFilter("recent");
+                }}
+                className={cls("rounded-[1.2rem] px-3 py-1.5 text-xs font-medium", listFilter === "recent" && !submittedQuery ? "bg-cyan-500 text-white" : "text-slate-400")}
+              >
+                Recent
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSubmittedQuery("");
+                  setListFilter("exportable");
+                }}
+                className={cls("rounded-[1.2rem] px-3 py-1.5 text-xs font-medium", listFilter === "exportable" && !submittedQuery ? "bg-cyan-500 text-white" : "text-slate-400")}
+              >
+                Exportable
+              </button>
             </div>
             {submittedQuery ? (
               <button
@@ -319,6 +345,10 @@ export function MemoryView({ light }: MemoryViewProps) {
               <div className="grid gap-3 sm:grid-cols-2">
                 <DetailField label="Created At" value={formatDate(selectedMemory.created_at)} light={light} />
                 <DetailField label="Updated At" value={formatDate(selectedMemory.updated_at)} light={light} />
+                <DetailField label="Visibility" value={selectedMemory.visibility || "unknown"} light={light} />
+                <DetailField label="Sensitivity" value={selectedMemory.sensitivity || "unknown"} light={light} />
+                <DetailField label="Redaction" value={selectedMemory.redaction_status || "unknown"} light={light} />
+                <DetailField label="Export" value={selectedMemory.export_allowed ? "allowed" : "blocked"} light={light} />
               </div>
 
               <div>
@@ -343,17 +373,24 @@ export function MemoryView({ light }: MemoryViewProps) {
               </div>
 
               <div>
-                <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Summary</div>
+                <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">GPT-safe Summary</div>
                 <div className={cls("rounded-[1.5rem] border px-4 py-3 text-sm leading-7", light ? "border-slate-200 bg-slate-50 text-slate-700" : "border-white/10 bg-black/20 text-slate-200")}>
-                  {selectedMemory.summary || "summary is empty"}
+                  {selectedMemory.gpt_summary || selectedMemory.summary || "summary is empty"}
                 </div>
               </div>
 
               <div>
-                <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Body</div>
+                <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Body Detail</div>
                 <div className={cls("rounded-[1.5rem] border px-4 py-3 text-sm leading-7 whitespace-pre-wrap", light ? "border-slate-200 bg-slate-50 text-slate-700" : "border-white/10 bg-black/20 text-slate-200")}>
                   {selectedMemory.body || "body is empty"}
                 </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DetailField label="Source Type" value={selectedMemory.source_type || "unknown"} light={light} />
+                <DetailField label="Source ID" value={selectedMemory.source_id ? `${selectedMemory.source_id.slice(0, 16)}...` : "unknown"} light={light} />
+                <DetailField label="Status" value={selectedMemory.status || "unknown"} light={light} />
+                <DetailField label="Archived" value={selectedMemory.archived ? "yes" : "no"} light={light} />
               </div>
             </div>
           ) : null}

@@ -158,6 +158,8 @@ MEMORY_POLICY_COLUMNS = (
     "export_allowed",
     "supersedes_id",
     "superseded_by_id",
+    "source_type",
+    "source_id",
 )
 
 
@@ -296,6 +298,35 @@ def get_recent_memories(limit: int = 10) -> list[dict]:
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+def get_exportable_memories(limit: int = 20) -> list[dict]:
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        required_columns = {"visibility", "export_allowed", "redaction_status", "sensitivity", "archived"}
+        if not required_columns <= _table_columns(cursor, "memories"):
+            return []
+
+        select_clause = _memory_select_clause(cursor)
+        cursor.execute(
+            f"""
+            SELECT {select_clause}
+            FROM memories
+            WHERE visibility = 'gpt_safe'
+              AND export_allowed = 1
+              AND redaction_status = 'sanitized'
+              AND sensitivity != 'secret'
+              AND archived = 0
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
 
 def forget_memory(memory_id: str) -> bool:
     conn = _get_conn()

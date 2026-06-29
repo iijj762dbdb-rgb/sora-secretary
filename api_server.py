@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from assistant_memory import (
+    get_exportable_memories,
     get_memory,
     get_recent_memories,
     list_memories_by_type,
@@ -65,6 +66,10 @@ def _serialize_memory(memory: dict) -> dict:
         "export_allowed": memory.get("export_allowed"),
         "supersedes_id": memory.get("supersedes_id"),
         "superseded_by_id": memory.get("superseded_by_id"),
+        "source_type": memory.get("source_type"),
+        "source_id": memory.get("source_id"),
+        "status": memory.get("status"),
+        "archived": memory.get("archived"),
         "created_at": memory.get("created_at"),
         "updated_at": memory.get("updated_at"),
     }
@@ -134,6 +139,15 @@ async def search_memory_endpoint(
         raise HTTPException(status_code=400, detail="query must not be empty")
 
     items = [_serialize_memory(memory) for memory in search_memories(query, limit)]
+    return {
+        "status": "ok",
+        "items": items,
+    }
+
+
+@app.get("/api/memories/exportable")
+async def exportable_memories(limit: int = Query(default=20, ge=1, le=100)) -> dict:
+    items = [_serialize_memory(memory) for memory in get_exportable_memories(limit)]
     return {
         "status": "ok",
         "items": items,

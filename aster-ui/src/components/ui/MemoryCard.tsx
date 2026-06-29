@@ -45,7 +45,8 @@ export function MemoryCard({
   onClick,
 }: MemoryCardProps) {
   const tags = formatTags(memory.tags);
-  const preview = memory.summary || memory.body || "本文はありません。";
+  const preview = memory.gpt_summary || memory.summary || "summary is empty.";
+  const exportAllowed = memory.export_allowed === 1 || memory.export_allowed === true;
 
   return (
     <button
@@ -65,6 +66,12 @@ export function MemoryCard({
         <div className="flex min-w-0 flex-wrap gap-2">
           <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-cyan-300">
             {memory.memory_type || "memory"}
+          </span>
+          <span className={cls("rounded-full px-2 py-0.5 text-[10px]", light ? "bg-slate-200 text-slate-700" : "bg-white/10 text-slate-300")}>
+            {memory.visibility || "visibility unknown"}
+          </span>
+          <span className={cls("rounded-full px-2 py-0.5 text-[10px]", exportAllowed ? "bg-emerald-500/15 text-emerald-300" : light ? "bg-slate-200 text-slate-700" : "bg-white/10 text-slate-300")}>
+            export {exportAllowed ? "on" : "off"}
           </span>
           {tags.slice(0, 2).map((tag) => (
             <span
