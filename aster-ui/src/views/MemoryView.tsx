@@ -53,6 +53,7 @@ export function MemoryView({ light }: MemoryViewProps) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [showProtectedBodyId, setShowProtectedBodyId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -382,7 +383,20 @@ export function MemoryView({ light }: MemoryViewProps) {
               <div>
                 <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">Body Detail</div>
                 <div className={cls("rounded-[1.5rem] border px-4 py-3 text-sm leading-7 whitespace-pre-wrap", light ? "border-slate-200 bg-slate-50 text-slate-700" : "border-white/10 bg-black/20 text-slate-200")}>
-                  {selectedMemory.body || "body is empty"}
+                  {(selectedMemory.visibility === "local_only" || selectedMemory.sensitivity === "private" || selectedMemory.sensitivity === "secret") && showProtectedBodyId !== selectedMemory.id ? (
+                    <div className="text-slate-500 italic flex items-center">
+                      <AlertTriangle className="w-4 h-4 mr-2 text-amber-500" />
+                      保護された本文 ({selectedMemory.visibility} / {selectedMemory.sensitivity})
+                      <button 
+                        className="ml-3 underline hover:text-slate-700 transition-colors" 
+                        onClick={() => setShowProtectedBodyId(selectedMemory.id!)}
+                      >
+                        表示する
+                      </button>
+                    </div>
+                  ) : (
+                    selectedMemory.body || "body is empty"
+                  )}
                 </div>
               </div>
 

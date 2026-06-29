@@ -35,12 +35,13 @@
   * `StatusView` の `/api/status` 接続、および `MemoryView` の recent/search/detail 接続は完了。
   * `HomeView` / `RightPanel` の ToDo / Reminder read-only 接続も完了。
   * 次の優先は `DailyView` の read-only 接続、または write API フェーズの検討。
-- [ ] **assistant_memory.db の長期記憶policy対応reset設計**:
-  * Asterはまだ本運用前のため、既存データ保持migrationではなく、DBファイルをバックアップしてから新schemaでリセットする方針を採用する。
-  * 設計正本は `docs/assistant-memory-reset-schema-plan.md`。
-  * `init_db()` / FTS trigger / export filter はpolicy fields対応済み。実DB resetはまだしない。
-  * memories read-only API / Aster UI はpolicy fieldsとexportable filter表示に対応済み。
-  * 次は write pathのUI/API設計、reset実行前のバックアップ手順レビュー、実運用前の権限・表示範囲レビュー。
+- [x] **assistant_memory.db の長期記憶policy対応reset実行**:
+  * 既存DBをバックアップ退避し、`visibility` 等のpolicy fieldsとFTS対応の新schemaにリセット済み。
+  * `ai-memory-capture` からの安全な1件実importも確認済み。
+  * memories read-only API は一覧で `body` を省略し、Aster UI 側で `local_only`, `private`, `secret` な記憶の `body` をデフォルト非表示（クリック展開）とする安全方針を実装済み。
+- [ ] **専用UIの実データ接続 (次フェーズ)**:
+  * `DailyView` の read-only 接続の実装。
+  * `aster-ui` から API 経由での記憶やタスクの追加 (write path) のUI/API設計。
 
 ## 将来的な検討・構想タスク
 - [ ] **MESSAGE_CONTENT_FREE_CHAT_CHANNEL_IDS の導入**:
