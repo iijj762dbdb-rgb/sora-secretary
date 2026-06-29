@@ -24,20 +24,40 @@ def init_db():
             memory_type TEXT NOT NULL,
             title TEXT NOT NULL,
             summary TEXT NOT NULL,
+            gpt_summary TEXT,
             body TEXT,
 
             tags TEXT,
+            project TEXT,
             importance INTEGER DEFAULT 3,
-            sensitivity TEXT DEFAULT 'normal',
+            confidence REAL DEFAULT NULL,
+            sensitivity TEXT NOT NULL DEFAULT 'normal'
+                CHECK (sensitivity IN ('normal', 'private', 'secret')),
+            visibility TEXT NOT NULL DEFAULT 'local_only'
+                CHECK (visibility IN ('local_only', 'gpt_safe', 'repo_safe', 'public')),
+            redaction_status TEXT NOT NULL DEFAULT 'unchecked'
+                CHECK (redaction_status IN ('unchecked', 'sanitized', 'needs_redaction', 'blocked')),
+            export_allowed INTEGER NOT NULL DEFAULT 0
+                CHECK (export_allowed IN (0, 1)),
+
+            valid_from TEXT,
+            valid_until TEXT,
+            expires_at TEXT,
+            review_at TEXT,
+            last_accessed_at TEXT,
+            access_count INTEGER NOT NULL DEFAULT 0,
+
+            supersedes_id TEXT,
+            superseded_by_id TEXT,
 
             source_type TEXT,
             source_id TEXT,
             source_path TEXT,
             source_updated_at TEXT,
 
-            status TEXT DEFAULT 'active',
-            version INTEGER DEFAULT 1,
-            archived INTEGER DEFAULT 0
+            status TEXT NOT NULL DEFAULT 'active',
+            version INTEGER NOT NULL DEFAULT 1,
+            archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
         );
         ''')
 
@@ -74,28 +94,28 @@ def init_db():
         # FTS5 virtual table
         cursor.execute('''
         CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts
-        USING fts5(title, summary, body, tags, content='memories', content_rowid='rowid');
+        USING fts5(title, summary, gpt_summary, body, tags, content='memories', content_rowid='rowid');
         ''')
 
         # Triggers for FTS5 synchronization
         cursor.execute('''
         CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
-            INSERT INTO memories_fts(rowid, title, summary, body, tags)
-            VALUES (new.rowid, new.title, new.summary, new.body, new.tags);
+            INSERT INTO memories_fts(rowid, title, summary, gpt_summary, body, tags)
+            VALUES (new.rowid, new.title, new.summary, new.gpt_summary, new.body, new.tags);
         END;
         ''')
         cursor.execute('''
         CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-            INSERT INTO memories_fts(memories_fts, rowid, title, summary, body, tags)
-            VALUES ('delete', old.rowid, old.title, old.summary, old.body, old.tags);
+            INSERT INTO memories_fts(memories_fts, rowid, title, summary, gpt_summary, body, tags)
+            VALUES ('delete', old.rowid, old.title, old.summary, old.gpt_summary, old.body, old.tags);
         END;
         ''')
         cursor.execute('''
         CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
-            INSERT INTO memories_fts(memories_fts, rowid, title, summary, body, tags)
-            VALUES ('delete', old.rowid, old.title, old.summary, old.body, old.tags);
-            INSERT INTO memories_fts(rowid, title, summary, body, tags)
-            VALUES (new.rowid, new.title, new.summary, new.body, new.tags);
+            INSERT INTO memories_fts(memories_fts, rowid, title, summary, gpt_summary, body, tags)
+            VALUES ('delete', old.rowid, old.title, old.summary, old.gpt_summary, old.body, old.tags);
+            INSERT INTO memories_fts(rowid, title, summary, gpt_summary, body, tags)
+            VALUES (new.rowid, new.title, new.summary, new.gpt_summary, new.body, new.tags);
         END;
         ''')
 
@@ -114,7 +134,67 @@ def _table_exists(cursor, table_name: str) -> bool:
     )
     return cursor.fetchone() is not None
 
-def remember_memory(title: str, body: str, tags: str = "", memory_type: str = "conversation_note", sensitivity: str = "normal") -> str:
+
+def _table_columns(cursor, table_name: str) -> set[str]:
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    return {row[1] for row in cursor.fetchall()}
+
+
+MEMORY_BASE_COLUMNS = (
+    "id",
+    "title",
+    "summary",
+    "tags",
+    "memory_type",
+    "created_at",
+    "updated_at",
+)
+MEMORY_POLICY_COLUMNS = (
+    "visibility",
+    "gpt_summary",
+    "confidence",
+    "review_at",
+    "redaction_status",
+    "export_allowed",
+    "supersedes_id",
+    "superseded_by_id",
+)
+
+
+def _memory_select_clause(cursor, *, include_body: bool = False) -> str:
+    existing = _table_columns(cursor, "memories")
+    columns = list(MEMORY_BASE_COLUMNS)
+    if include_body:
+        columns.append("body")
+    columns.extend(("sensitivity", "status", "archived"))
+
+    select_parts: list[str] = []
+    for column in columns:
+        if column in existing:
+            select_parts.append(column)
+    for column in MEMORY_POLICY_COLUMNS:
+        if column in existing:
+            select_parts.append(column)
+        else:
+            select_parts.append(f"NULL AS {column}")
+    return ", ".join(select_parts)
+
+
+def remember_memory(
+    title: str,
+    body: str,
+    tags: str = "",
+    memory_type: str = "conversation_note",
+    sensitivity: str = "normal",
+    visibility: str = "local_only",
+    gpt_summary: str | None = None,
+    confidence: float | None = None,
+    review_at: str | None = None,
+    redaction_status: str = "unchecked",
+    export_allowed: int = 0,
+    supersedes_id: str | None = None,
+    superseded_by_id: str | None = None,
+) -> str:
     conn = _get_conn()
     try:
         mem_id = f"mem_{datetime.now().strftime('%Y%m%d')}_{uuid.uuid4().hex[:8]}"
@@ -122,11 +202,32 @@ def remember_memory(title: str, body: str, tags: str = "", memory_type: str = "c
         summary = body[:200]
 
         cursor = conn.cursor()
-        cursor.execute('''
-        INSERT INTO memories (
-            id, created_at, updated_at, memory_type, title, summary, body, tags, sensitivity
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (mem_id, now, now, memory_type, title, summary, body, tags, sensitivity))
+        values = {
+            "id": mem_id,
+            "created_at": now,
+            "updated_at": now,
+            "memory_type": memory_type,
+            "title": title,
+            "summary": summary,
+            "gpt_summary": gpt_summary or summary,
+            "body": body,
+            "tags": tags,
+            "sensitivity": sensitivity,
+            "visibility": visibility,
+            "confidence": confidence,
+            "review_at": review_at,
+            "redaction_status": redaction_status,
+            "export_allowed": int(bool(export_allowed)),
+            "supersedes_id": supersedes_id,
+            "superseded_by_id": superseded_by_id,
+        }
+        existing = _table_columns(cursor, "memories")
+        insert_columns = [column for column in values if column in existing]
+        placeholders = ", ".join("?" for _ in insert_columns)
+        cursor.execute(
+            f"INSERT INTO memories ({', '.join(insert_columns)}) VALUES ({placeholders})",
+            tuple(values[column] for column in insert_columns),
+        )
         conn.commit()
         return mem_id
     finally:
@@ -136,10 +237,17 @@ def search_memories(query: str, limit: int = 5) -> list[dict]:
     conn = _get_conn()
     try:
         cursor = conn.cursor()
+        select_clause = _memory_select_clause(cursor)
+        memory_columns = _table_columns(cursor, "memories")
+        like_parts = ["title LIKE ?", "summary LIKE ?", "body LIKE ?", "tags LIKE ?"]
+        like_values = [f"%{query}%"] * len(like_parts)
+        if "gpt_summary" in memory_columns:
+            like_parts.append("gpt_summary LIKE ?")
+            like_values.append(f"%{query}%")
 
         # Using FTS5
-        sql = '''
-        SELECT m.id, m.title, m.summary, m.tags, m.memory_type, m.created_at
+        sql = f'''
+        SELECT {", ".join(f"m.{part}" if " AS " not in part else part for part in select_clause.split(", "))}
         FROM memories m
         JOIN memories_fts f ON m.rowid = f.rowid
         WHERE memories_fts MATCH ? AND m.archived = 0
@@ -157,15 +265,14 @@ def search_memories(query: str, limit: int = 5) -> list[dict]:
             rows = cursor.fetchall()
         except sqlite3.OperationalError:
             # Fallback to LIKE if FTS fails (e.g. malformed query)
-            like_query = f"%{query}%"
-            fallback_sql = '''
-            SELECT id, title, summary, tags, memory_type, created_at
+            fallback_sql = f'''
+            SELECT {select_clause}
             FROM memories
-            WHERE archived = 0 AND (title LIKE ? OR summary LIKE ? OR body LIKE ? OR tags LIKE ?)
+            WHERE archived = 0 AND ({' OR '.join(like_parts)})
             ORDER BY created_at DESC
             LIMIT ?
             '''
-            cursor.execute(fallback_sql, (like_query, like_query, like_query, like_query, limit))
+            cursor.execute(fallback_sql, tuple(like_values + [limit]))
             rows = cursor.fetchall()
 
         return [dict(r) for r in rows]
@@ -176,8 +283,9 @@ def get_recent_memories(limit: int = 10) -> list[dict]:
     conn = _get_conn()
     try:
         cursor = conn.cursor()
-        sql = '''
-        SELECT id, title, summary, tags, memory_type, created_at
+        select_clause = _memory_select_clause(cursor)
+        sql = f'''
+        SELECT {select_clause}
         FROM memories
         WHERE archived = 0
         ORDER BY created_at DESC
@@ -311,7 +419,25 @@ def export_memories_to_markdown(limit: int, memory_dir: str) -> tuple[str, int]:
     conn = _get_conn()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM memories WHERE archived = 0 ORDER BY created_at DESC LIMIT ?", (limit,))
+        columns = _table_columns(cursor, "memories")
+        required_policy_columns = {"visibility", "export_allowed", "redaction_status", "gpt_summary"}
+        if not required_policy_columns <= columns:
+            return "", 0
+
+        cursor.execute(
+            """
+            SELECT id, title, memory_type, tags, created_at, summary, gpt_summary, visibility, sensitivity
+            FROM memories
+            WHERE archived = 0
+              AND visibility = 'gpt_safe'
+              AND export_allowed = 1
+              AND redaction_status = 'sanitized'
+              AND sensitivity != 'secret'
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
         rows = cursor.fetchall()
 
         if not rows:
@@ -334,11 +460,12 @@ def export_memories_to_markdown(limit: int, memory_dir: str) -> tuple[str, int]:
             for r in rows:
                 f.write(f"## {r['title']} (`{r['id']}`)\n")
                 f.write(f"- **Type**: {r['memory_type']}\n")
+                f.write(f"- **Visibility**: {r['visibility']}\n")
+                f.write(f"- **Sensitivity**: {r['sensitivity']}\n")
                 f.write(f"- **Tags**: {r['tags']}\n")
                 f.write(f"- **Created At**: {r['created_at']}\n")
-                f.write(f"### Summary\n{r['summary']}\n\n")
-                if r['body']:
-                    f.write(f"### Body\n{r['body']}\n\n")
+                export_summary = r["gpt_summary"] or r["summary"]
+                f.write(f"### GPT-safe Summary\n{export_summary}\n\n")
                 f.write("---\n\n")
 
         return filepath, count
@@ -495,9 +622,10 @@ def list_memories_by_type(memory_type: str, limit: int = 20) -> list[dict]:
     conn = _get_conn()
     try:
         cursor = conn.cursor()
+        select_clause = _memory_select_clause(cursor, include_body=True)
         cursor.execute(
-            """
-            SELECT id, title, summary, body, tags, memory_type, created_at, updated_at
+            f"""
+            SELECT {select_clause}
             FROM memories
             WHERE archived = 0 AND memory_type = ?
             ORDER BY created_at DESC

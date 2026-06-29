@@ -38,7 +38,8 @@
 - [ ] **assistant_memory.db の長期記憶policy対応reset設計**:
   * Asterはまだ本運用前のため、既存データ保持migrationではなく、DBファイルをバックアップしてから新schemaでリセットする方針を採用する。
   * 設計正本は `docs/assistant-memory-reset-schema-plan.md`。
-  * 実行はまだしない。次は `init_db()` / FTS trigger / export filter / ai-memory-capture import mapping の実装設計とテスト作成。
+  * `init_db()` / FTS trigger / export filter はpolicy fields対応済み。実DB resetはまだしない。
+  * 次は ai-memory-capture import mapping、write pathのUI/API設計、reset実行前のバックアップ手順レビュー。
 
 ## 将来的な検討・構想タスク
 - [ ] **MESSAGE_CONTENT_FREE_CHAT_CHANNEL_IDS の導入**:

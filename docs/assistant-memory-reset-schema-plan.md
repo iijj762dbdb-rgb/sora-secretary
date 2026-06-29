@@ -19,7 +19,7 @@ Aster / SORA Secretary の `assistant_memory.db` はまだ本運用していな�
   - `todos`: 12
   - `reminders`: 23
 
-The current `init_db()` creates the base tables, `memories_fts`, and the three FTS synchronization triggers. `export_memories_to_markdown()` currently exports `title`, `memory_type`, `tags`, `created_at`, `summary`, and `body` for active memories.
+The current `init_db()` creates the policy-field-aware base tables, `memories_fts`, and the three FTS synchronization triggers for new DBs. `export_memories_to_markdown()` now exports only GPT-safe sanitized summaries and does not write raw `body`.
 
 ## Reset principle
 
@@ -49,13 +49,13 @@ CREATE TABLE memories (
     tags TEXT,
     project TEXT,
     importance INTEGER DEFAULT 3,
-    confidence REAL DEFAULT 0.7,
+    confidence REAL DEFAULT NULL,
     sensitivity TEXT NOT NULL DEFAULT 'normal'
         CHECK (sensitivity IN ('normal', 'private', 'secret')),
     visibility TEXT NOT NULL DEFAULT 'local_only'
         CHECK (visibility IN ('local_only', 'gpt_safe', 'repo_safe', 'public')),
-    redaction_status TEXT NOT NULL DEFAULT 'unsanitized'
-        CHECK (redaction_status IN ('unsanitized', 'sanitized', 'blocked')),
+    redaction_status TEXT NOT NULL DEFAULT 'unchecked'
+        CHECK (redaction_status IN ('unchecked', 'sanitized', 'needs_redaction', 'blocked')),
     export_allowed INTEGER NOT NULL DEFAULT 0
         CHECK (export_allowed IN (0, 1)),
 
@@ -184,7 +184,7 @@ Must include at least:
 
 ## Export behavior after schema reset
 
-`export_memories_to_markdown()` should be updated before public or GPT-facing export is trusted.
+`export_memories_to_markdown()` is implemented as a GPT-safe export path.
 
 - Local/admin export may include `body`, but should clearly mark visibility and sensitivity.
 - GPT-facing export must include only records where:
@@ -192,7 +192,7 @@ Must include at least:
   - `export_allowed = 1`
   - `redaction_status = 'sanitized'`
   - `sensitivity != 'secret'`
-- GPT-facing export should prefer `gpt_summary` and omit raw `body` by default.
+- GPT-facing export prefers `gpt_summary` and omits raw `body`.
 - Repo-safe export should require `visibility IN ('repo_safe', 'public')`, `export_allowed = 1`, and `redaction_status = 'sanitized'`.
 - `local_only`, `private`, and `secret` records must not be exported to GPT/GitHub targets.
 
@@ -223,12 +223,13 @@ Real import should continue to reject `blocked`, `invalid`, `local_only_required
 
 ## Implementation sequence
 
-1. Update `assistant_memory.py:init_db()` with the target schema and updated FTS triggers.
-2. Update insert paths (`remember_memory`, daily report creation paths, future import path) to provide safe defaults for new fields.
-3. Update read paths and API serialization as needed.
-4. Update Markdown export to enforce visibility/export filters.
-5. Add tests for schema columns, FTS synchronization, export filtering, and import dry-run mapping.
-6. Only after review, run the backup and reset plan.
+1. Done: update `assistant_memory.py:init_db()` with the target schema and updated FTS triggers.
+2. Done: update `remember_memory()` to provide safe defaults for new fields.
+3. Done: update read paths and API serialization for policy fields.
+4. Done: update Markdown export to enforce visibility/export filters.
+5. Next: update ai-memory-capture import dry-run/real mapping for the new schema.
+6. Next: add or extend dedicated tests for import mapping and backup/reset execution.
+7. Only after review, run the backup and reset plan.
 
 ## Non-goals for this design step
 
