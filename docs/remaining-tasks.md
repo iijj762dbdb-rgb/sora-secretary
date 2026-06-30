@@ -30,13 +30,14 @@
   * `api_server.py` を追加し、`aster-ui` から `status` / `memories` / `todos` / `reminders` / `daily reports` を読むためのローカル read-only API を実装済。
   * Discord Bot 本体とは別プロセスで動作し、`127.0.0.1:8787` bind を前提とする。
   * `aster-ui/dist/` が存在する場合は、同じFastAPI/uvicornプロセスから静的UIを配信する。soraには `node` / `npm` を入れず、Mint側でbuildした `dist/` だけを同期する。
-  * 8788での一時確認では `/api/memories/recent`, `/api/memories/exportable`, `/`, `/memory`, `/assets/...` が200 OK。SSH tunnel越しのheadless Chromeで `/#/memory` を開き、Memory 2件のタイトルとpolicy badge相当の表示も確認済み。systemd反映は未実施。
+  * `sora-secretary-api.service` user systemd service として8787へ常駐化済み。`/api/memories/recent`, `/api/memories/exportable`, `/`, `/memory` が200 OK。SSH tunnel越しのheadless Chromeで `/#/memory` を開き、Memory 2件のタイトルとpolicy badge相当の表示も確認済み。
+  * Mint側に `/home/okota/bin/sora-secretary-open-memory.sh`, `sora-secretary-restart.sh`, `sora-secretary-status.sh` とデスクトップlauncherを作成済み。
 - [ ] **専用UIの実データ接続 (次フェーズ)**:
   * `aster-ui` を SORA Secretary のバックエンド（まずは read-only API、その後 Ollama / 書き込み系 API）と通信させ、実際に機能するUIとして統合する。
   * 実装計画の詳細は `docs/ui-next-implementation-plan.md` を参照。
   * `StatusView` の `/api/status` 接続、および `MemoryView` の recent/search/detail 接続は完了。
   * `HomeView` / `RightPanel` の ToDo / Reminder read-only 接続も完了。
-  * 次の優先は systemd反映方法の設計、`DailyView` の read-only 接続、または write API フェーズの検討。
+  * 次の優先は `aster-ui/dist/` 同期手順の運用化、service health確認、`DailyView` の read-only 接続、または write API フェーズの検討。
 - [x] **assistant_memory.db の長期記憶policy対応reset実行**:
   * 既存DBをバックアップ退避し、`visibility` 等のpolicy fieldsとFTS対応の新schemaにリセット済み。
   * `ai-memory-capture` からの安全な1件実importも確認済み。

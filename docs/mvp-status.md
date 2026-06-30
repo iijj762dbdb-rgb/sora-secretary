@@ -21,6 +21,8 @@
 - [x] `aster-ui` の `MemoryView` を memories read-only API に接続し、recent / search / detail と loading/error/empty を実装
 - [x] `aster-ui` の `HomeView` / `RightPanel` に ToDo / Reminder read-only API を接続し、active todo / pending reminder の表示と loading/error/empty を実装
 - [x] Mint側でbuildした `aster-ui/dist/` をsoraへ同期し、FastAPI/uvicornから同一originで静的配信できる構成を実装
+- [x] `sora-secretary-api.service` user systemd service により、API + Aster UI static delivery をSORA上の `127.0.0.1:8787` で常駐化
+- [x] Mintデスクトップに Memory UI open / service restart / status 確認のlauncherを作成
 
 ## 次のステップ
 - [x] `assistant_memory.db` の構築
@@ -34,5 +36,5 @@
 - Phase 2-B: reminder 最小版の実装 (reminders テーブル、バックグラウンドループ通知、スラッシュコマンド)
 - Phase 2-C: Daily Briefing MVP (手動呼び出し版 /briefing)
 - Phase UI-1: Web UI 向け read-only API (`/api/status`, `/api/memories/*`, `/api/todos`, `/api/reminders`, `/api/daily-reports`)
-- Phase UI static delivery: soraには `node` / `npm` を入れず、Mint build済み `aster-ui/dist/` を同期してFastAPIから配信する。8788での一時uvicorn確認では `/api/memories/recent`, `/api/memories/exportable`, `/`, `/memory`, `/assets/...` が200 OK。SSH tunnel越しのheadless Chromeで `/#/memory` を開き、Memory 2件のタイトルとpolicy badge相当の表示も確認済み。
+- Phase UI static delivery: soraには `node` / `npm` を入れず、Mint build済み `aster-ui/dist/` を同期してFastAPIから配信する。user systemd service の8787常駐化後、`/api/memories/recent`, `/api/memories/exportable`, `/`, `/memory` が200 OK。MintのSSH tunnel越しheadless Chromeで `/#/memory` を開き、Memory 2件のタイトルとpolicy badge相当の表示も確認済み。
 - [ ] 将来の `/code` やコード相談入口で `CODE_MODEL` を実利用するか検討する
