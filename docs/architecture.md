@@ -11,6 +11,7 @@
    - FastAPI ベースのローカル専用 read-only HTTP API
    - `aster-ui` から `assistant_memory.db` や `status_info.py` の情報を読むための薄い接続層
    - Discord Bot とは別プロセスで動作し、`127.0.0.1:8787` での待受を想定
+   - `aster-ui/dist/` が存在する場合は、同じFastAPIプロセスから静的UIも配信する
 4. **Ollama**
    - ローカルLLMエンジン (gemma3:4b など)
 5. **assistant_memory.db**
@@ -27,5 +28,8 @@
 
 ## UI API Gateway (UI-1)
 - `api_server.py` は、`aster-ui` を実データへ段階接続するための **read-only FastAPI Gateway** です。
-- 今回の UI-1 では `GET /api/health`, `GET /api/status`, `GET /api/memories/*`, `GET /api/todos`, `GET /api/reminders`, `GET /api/daily-reports` のみを提供します。
+- UI-1 では `GET /api/health`, `GET /api/status`, `GET /api/memories/*`, `GET /api/todos`, `GET /api/reminders`, `GET /api/daily-reports` を提供します。
+- soraには `node` / `npm` を入れず、Mint側で `aster-ui` をbuildして生成した `dist/` だけをsoraへ同期します。
+- `aster-ui/dist/index.html` が存在する場合、`GET /` と `GET /memory` などのSPA fallbackは同じFastAPIプロセスから `index.html` を返します。API routesは従来通り `/api/...` が優先されます。
+- `dist/` が存在しない場合でもAPI起動は落ちず、`GET /` はUI未配置のread-only状態メッセージを返します。
 - 書き込み系 API、Chat/Ollama 実行 API、Document Inbox 連携、systemd 操作や shell 実行などの危険操作は含めません。

@@ -1,6 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from assistant_memory import (
     get_exportable_memories,
@@ -19,6 +21,9 @@ app = FastAPI(
     version="0.1.0",
     description="Read-only local API gateway for aster-ui.",
 )
+
+ASTER_UI_DIST_DIR = Path(__file__).resolve().parent / "aster-ui" / "dist"
+ASTER_UI_INDEX = ASTER_UI_DIST_DIR / "index.html"
 
 app.add_middleware(
     CORSMiddleware,
@@ -102,6 +107,26 @@ def _serialize_reminder(reminder: dict) -> dict:
         "source": reminder.get("source"),
         "related_todo_id": reminder.get("related_todo_id"),
     }
+
+
+def _aster_ui_dist_ready() -> bool:
+    return ASTER_UI_INDEX.is_file()
+
+
+def _aster_ui_file_response(full_path: str = "") -> FileResponse:
+    if not _aster_ui_dist_ready():
+        raise HTTPException(status_code=404, detail="aster-ui dist is not available")
+
+    if full_path:
+        candidate = (ASTER_UI_DIST_DIR / full_path).resolve()
+        try:
+            candidate.relative_to(ASTER_UI_DIST_DIR.resolve())
+        except ValueError:
+            raise HTTPException(status_code=404, detail="asset not found") from None
+        if candidate.is_file():
+            return FileResponse(candidate)
+
+    return FileResponse(ASTER_UI_INDEX)
 
 
 @app.get("/api/health")
@@ -212,3 +237,22 @@ async def daily_reports(limit: int = Query(default=20, ge=1, le=100)) -> dict:
         "status": "ok",
         "items": items,
     }
+
+
+@app.get("/", include_in_schema=False)
+async def aster_ui_index():
+    if _aster_ui_dist_ready():
+        return _aster_ui_file_response()
+    return {
+        "status": "ok",
+        "service": "sora-secretary-api",
+        "mode": "read-only",
+        "ui": "aster-ui dist is not available; build aster-ui on Mint and sync dist/ to sora.",
+    }
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def aster_ui_spa(full_path: str):
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="api route not found")
+    return _aster_ui_file_response(full_path)

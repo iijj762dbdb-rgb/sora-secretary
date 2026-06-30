@@ -66,7 +66,9 @@ export interface RemindersResponse {
   items: ReminderItem[];
 }
 
-const API_BASE = "http://127.0.0.1:8787";
+const API_BASE =
+  import.meta.env.VITE_SORA_API_BASE ??
+  (window.location.port.startsWith("517") ? "http://127.0.0.1:8787" : "");
 
 export async function fetchStatus(): Promise<StatusResponse> {
   const response = await fetch(`${API_BASE}/api/status`);
