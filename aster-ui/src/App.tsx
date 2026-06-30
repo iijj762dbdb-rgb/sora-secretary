@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { cls } from "./utils/formatting";
 import { navItems, initialMessages } from "./data/mockData";
 import { DesktopSidebar } from "./components/layout/DesktopSidebar";
@@ -12,14 +12,49 @@ import { DailyView } from "./views/DailyView";
 import { StatusView } from "./views/StatusView";
 import { DibView } from "./views/DibView";
 
+const validNavIds = new Set(navItems.map((item) => item.id));
+
+function getInitialActiveView() {
+  if (typeof window === "undefined") return "home";
+
+  const hashView = window.location.hash.replace(/^#\/?/, "");
+  if (validNavIds.has(hashView)) return hashView;
+
+  const pathView = window.location.pathname.split("/").filter(Boolean).at(-1) ?? "";
+  if (validNavIds.has(pathView)) return pathView;
+
+  return "home";
+}
+
 export default function App() {
-  const [active, setActive] = useState("home");
+  const [active, setActive] = useState(getInitialActiveView);
   const [light, setLight] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState(initialMessages);
   
   const current = useMemo(() => navItems.find((item) => item.id === active) ?? navItems[0], [active]);
   const CurrentIcon = current.icon;
+
+  useEffect(() => {
+    const nextHash = `#/${active}`;
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState(null, "", nextHash);
+    }
+  }, [active]);
+
+  useEffect(() => {
+    const syncFromLocation = () => {
+      const next = getInitialActiveView();
+      setActive((currentView) => (currentView === next ? currentView : next));
+    };
+
+    window.addEventListener("hashchange", syncFromLocation);
+    window.addEventListener("popstate", syncFromLocation);
+    return () => {
+      window.removeEventListener("hashchange", syncFromLocation);
+      window.removeEventListener("popstate", syncFromLocation);
+    };
+  }, []);
 
   const runAsterAction = (action: any) => {
     setMessages((items) => [
